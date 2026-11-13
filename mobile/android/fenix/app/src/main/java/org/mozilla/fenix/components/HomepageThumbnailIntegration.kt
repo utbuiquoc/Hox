@@ -24,6 +24,8 @@ import mozilla.components.concept.engine.utils.ABOUT_HOME_URL
 import mozilla.components.support.base.feature.LifecycleAwareFeature
 import org.mozilla.fenix.browser.browsingmode.BrowsingMode
 
+private const val THUMBNAIL_CAPTURE_DELAY_MS = 600L
+
 /**
  * Homepage delegate to take screenshot of homepage when view loads and display as a thumbnail in tabs tray.
  *
@@ -51,6 +53,7 @@ class HomepageThumbnailIntegration(
         )
     }
     private var backgroundColor: Int = 0
+    private var pendingCaptureRunnable: Runnable? = null
 
     override fun start() {
         backgroundColor = getColor(context, appStore.state.mode).surface.toArgb()
@@ -58,17 +61,41 @@ class HomepageThumbnailIntegration(
     }
 
     override fun stop() {
+        cancelPendingCapture()
         feature.stop()
     }
 
+    private fun cancelPendingCapture() {
+        pendingCaptureRunnable?.let { view.removeCallbacks(it) }
+        pendingCaptureRunnable = null
+    }
+
     private fun homepageRequest(requestHomepageScreenshot: RequestHomepageScreenshot) {
-        view.post {
+        val selectedTabId = store.state.selectedTabId ?: return
+        val captureKey = selectedTabId to appStore.state.mode
+        if (lastCapturedKey == captureKey) {
+            return
+        }
+        cancelPendingCapture()
+        val captureRunnable = Runnable {
+            pendingCaptureRunnable = null
+            if (!view.isAttachedToWindow || view.width <= 0 || view.height <= 0) {
+                return@Runnable
+            }
+            val currentTabId = store.state.selectedTabId ?: return@Runnable
+            val currentKey = currentTabId to appStore.state.mode
+            if (lastCapturedKey == currentKey) {
+                return@Runnable
+            }
             val bitmap = createBitmap(view.width, view.height)
             val canvas = Canvas(bitmap)
             canvas.drawColor(backgroundColor)
             view.draw(canvas)
+            lastCapturedKey = currentKey
             requestHomepageScreenshot(bitmap.cropToBounds(homepageContentBounds()))
         }
+        pendingCaptureRunnable = captureRunnable
+        view.postDelayed(captureRunnable, THUMBNAIL_CAPTURE_DELAY_MS)
     }
 
     /**
@@ -110,5 +137,9 @@ class HomepageThumbnailIntegration(
         } else {
             acornLightColorScheme()
         }
+    }
+
+    companion object {
+        private var lastCapturedKey: Pair<String, BrowsingMode>? = null
     }
 }

@@ -8,25 +8,21 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.shape.CornerSize
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.compose.ui.unit.dp
 import java.text.DateFormat
 import java.util.Date
-import mozilla.components.compose.base.BottomSheetHandle
 import mozilla.components.compose.base.theme.PreviewThemeProvider
 import mozilla.components.compose.base.theme.Theme
 import mozilla.components.feature.protection.dashboard.TrackerCategory
@@ -34,6 +30,7 @@ import mozilla.components.feature.protection.dashboard.TrackerProtectionDashboar
 import mozilla.components.feature.protection.dashboard.TrackersBlockedCategory
 import mozilla.components.ui.icons.R as iconsR
 import org.mozilla.fenix.R
+import org.mozilla.fenix.components.menu.compose.DESKTOP_DROPDOWN_CORNER_DP
 import org.mozilla.fenix.theme.FirefoxTheme
 
 /**
@@ -68,16 +65,11 @@ fun ProtectionsDashboardContent(
         Box(
             modifier =
                 Modifier.fillMaxWidth()
-                    .clip(
-                        MaterialTheme.shapes.extraLarge.copy(
-                            bottomStart = CornerSize(0.dp),
-                            bottomEnd = CornerSize(0.dp),
-                        )
-                    )
+                    .clip(RoundedCornerShape(DESKTOP_DROPDOWN_CORNER_DP.dp))
                     .semantics { isTraversalGroup = true }
         ) {
             TrackerProtectionDashboard(
-                modifier = Modifier.fillMaxWidth().semantics { traversalIndex = 0f },
+                modifier = Modifier.fillMaxWidth(),
                 appName = stringResource(R.string.firefox),
                 totalTrackersBlockedAllTime = totalTrackersBlocked,
                 trackingSinceDate = formattedEarliestDate,
@@ -85,20 +77,7 @@ fun ProtectionsDashboardContent(
                 sitesCount = 0, // We don't yet have an API to get this data from.
                 dataSavedMB = null, // We don't yet have an API to get this data from.
                 trackersBlocked = trackersBlockedThisWeek,
-                contentPadding =
-                    PaddingValues(
-                        top = FirefoxTheme.layout.size.static300 // handle height + its top padding
-                    ),
-            )
-
-            BottomSheetHandle(
-                onRequestDismiss = onDismiss,
-                contentDescription =
-                    stringResource(R.string.tracker_protections_dashboard_close_handlebar_content_description),
-                modifier =
-                    Modifier.align(Alignment.TopCenter).minimumInteractiveComponentSize().semantics {
-                        traversalIndex = 1f
-                    },
+                contentPadding = PaddingValues(top = 8.dp),
             )
         }
     }

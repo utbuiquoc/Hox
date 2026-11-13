@@ -124,6 +124,7 @@ import org.mozilla.fenix.components.toolbar.TopDividerColumn
 import org.mozilla.fenix.compose.snackbar.SnackbarState
 import org.mozilla.fenix.compose.verticalFadingEdges
 import org.mozilla.fenix.ext.application
+import org.mozilla.fenix.ext.asRecentTabs
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.hideToolbar
 import org.mozilla.fenix.ext.nav
@@ -277,8 +278,28 @@ class HomeFragment : Fragment(), UserInteractionHandler, OnLongPressedListener {
         )
     }
 
-    private lateinit var privacyNoticeBannerStore: PrivacyNoticeBannerStore
-    private lateinit var collectionsMigrationCardStore: CollectionsMigrationCardStore
+    private val privacyNoticeBannerStore by lazy {
+        PrivacyNoticeBannerStore(
+            initialState =
+                PrivacyNoticeBannerState(visible = privacyNoticeBannerRepository.shouldShowPrivacyNoticeBanner()),
+            middleware =
+                listOf(
+                    PrivacyNoticeBannerMiddleware(repository = privacyNoticeBannerRepository),
+                    PrivacyNoticeBannerTelemetryMiddleware(),
+                ),
+        )
+    }
+
+    private val collectionsMigrationCardStore by lazy {
+        val collectionsMigrationRepository = requireComponents.collectionsMigrationRepository
+        CollectionsMigrationCardStore(
+            initialState =
+                CollectionsMigrationCardState(
+                    visible = collectionsMigrationRepository.shouldShowCollectionsMigrationCard()
+                ),
+            middleware = listOf(CollectionsMigrationCardMiddleware(repository = collectionsMigrationRepository)),
+        )
+    }
 
     private var _sessionControlController: SessionControlController? = null
 
@@ -417,6 +438,13 @@ class HomeFragment : Fragment(), UserInteractionHandler, OnLongPressedListener {
         // DO NOT ADD ANYTHING ABOVE THIS getProfilerTime CALL!
         val profilerStartTime = requireComponents.core.engine.profiler?.getProfilerTime()
 
+        if (requireComponents.settings.showRecentTabsFeature) {
+            val currentRecentTabs = requireComponents.core.store.state.asRecentTabs()
+            if (requireComponents.appStore.state.recentTabs != currentRecentTabs) {
+                requireComponents.appStore.dispatch(AppAction.RecentTabsChange(currentRecentTabs))
+            }
+        }
+
         val activity = activity as HomeActivity
         val composeView =
             ComposeView(activity).apply {
@@ -425,6 +453,7 @@ class HomeFragment : Fragment(), UserInteractionHandler, OnLongPressedListener {
             }
         homepageComposeView = composeView
         nullableToolbarView = buildToolbar(activity, composeView)
+        toolbarView.build(requireComponents.settings.isHomepageMiddleSearchEnabled)
         initComposeHomepage(view = composeView)
         val view =
             if (isToolbarSwipeToSwitchTabsEnabled()) {
@@ -570,8 +599,6 @@ class HomeFragment : Fragment(), UserInteractionHandler, OnLongPressedListener {
                 .navigate(NavGraphDirections.actionGlobalUnlockPrivateTabsFragment(NavigationOrigin.HOME_PAGE))
         }
 
-        toolbarView.build(requireComponents.settings.isHomepageMiddleSearchEnabled)
-
         requireComponents.appStore.state.wasLastTabClosedPrivate?.also {
             showUndoSnackbar(requireContext().tabClosedUndoMessage(it))
             requireComponents.appStore.dispatch(AppAction.TabStripAction.UpdateLastTabClosed(null))
@@ -605,27 +632,6 @@ class HomeFragment : Fragment(), UserInteractionHandler, OnLongPressedListener {
                 directions = HomeFragmentDirections.actionGlobalBrowser(null),
             )
         }
-
-        privacyNoticeBannerStore =
-            PrivacyNoticeBannerStore(
-                initialState =
-                    PrivacyNoticeBannerState(visible = privacyNoticeBannerRepository.shouldShowPrivacyNoticeBanner()),
-                middleware =
-                    listOf(
-                        PrivacyNoticeBannerMiddleware(repository = privacyNoticeBannerRepository),
-                        PrivacyNoticeBannerTelemetryMiddleware(),
-                    ),
-            )
-
-        val collectionsMigrationRepository = requireComponents.collectionsMigrationRepository
-        collectionsMigrationCardStore =
-            CollectionsMigrationCardStore(
-                initialState =
-                    CollectionsMigrationCardState(
-                        visible = collectionsMigrationRepository.shouldShowCollectionsMigrationCard()
-                    ),
-                middleware = listOf(CollectionsMigrationCardMiddleware(repository = collectionsMigrationRepository)),
-            )
 
         initController()
         initInteractor()
@@ -1371,7 +1377,7 @@ class HomeFragment : Fragment(), UserInteractionHandler, OnLongPressedListener {
                 requireComponents.appStore.dispatch(AppAction.CollectionsChange(it))
             }
             .also { observer ->
-                requireComponents.core.tabCollectionStorage.getCollections().observe(this, observer)
+                requireComponents.core.tabCollectionStorage.getCollections().observe(viewLifecycleOwner, observer)
             }
     }
 

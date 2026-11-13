@@ -344,7 +344,7 @@ class Components(
                 middlewares =
                     listOf(
                         ProfileMarkerMiddleware(markerName = "AppStore", profiler = core.engine.profiler),
-                        LogMiddleware(tag = "AppStore", shouldIncludeDetailedData = { Config.channel.isDebug }),
+                        LogMiddleware(tag = "AppStore", shouldIncludeDetailedData = { false }),
                         BlocklistMiddleware(blocklistHandler),
                         PocketMiddleware(
                             lazy { core.pocketStoriesService },

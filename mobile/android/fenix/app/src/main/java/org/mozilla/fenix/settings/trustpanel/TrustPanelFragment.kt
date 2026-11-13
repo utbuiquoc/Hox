@@ -6,12 +6,13 @@ package org.mozilla.fenix.settings.trustpanel
 
 import android.app.Dialog
 import android.content.Intent
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.FrameLayout
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
@@ -21,9 +22,8 @@ import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.CornerSize
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
@@ -36,15 +36,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat.Type.systemBars
 import androidx.fragment.compose.content
 import androidx.lifecycle.coroutineScope
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.navigation.fragment.navArgs
-import com.google.android.material.R as materialR
-import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import kotlin.time.Duration.Companion.seconds
@@ -72,8 +68,14 @@ import org.mozilla.fenix.R
 import org.mozilla.fenix.components.Components
 import org.mozilla.fenix.components.components
 import org.mozilla.fenix.components.menu.IPProtectionMenuBinding
+import org.mozilla.fenix.components.menu.compose.DESKTOP_DROPDOWN_CORNER_DP
+import org.mozilla.fenix.components.menu.compose.DESKTOP_PANEL_WIDTH_DP
+import org.mozilla.fenix.components.menu.compose.DesktopDropdownAnchor
 import org.mozilla.fenix.components.menu.compose.MenuDialogBottomSheet
 import org.mozilla.fenix.components.menu.compose.MenuHandleState
+import org.mozilla.fenix.components.menu.compose.calculateDesktopDropdownMaxHeight
+import org.mozilla.fenix.components.menu.compose.configureAsDesktopDropdown
+import org.mozilla.fenix.components.menu.compose.updateDesktopDropdownLayout
 import org.mozilla.fenix.components.menu.store.IPProtectionMenuState
 import org.mozilla.fenix.ext.requireComponents
 import org.mozilla.fenix.ext.runIfFragmentIsAttached
@@ -172,23 +174,23 @@ class TrustPanelFragment : BottomSheetDialogFragment() {
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog =
         (super.onCreateDialog(savedInstanceState) as BottomSheetDialog).apply {
-            setOnShowListener {
-                runIfFragmentIsAttached {
-                    val bottomSheet = findViewById<FrameLayout>(materialR.id.design_bottom_sheet)
-                    bottomSheet?.let {
-                        ViewCompat.setOnApplyWindowInsetsListener(it) { view, insets ->
-                            val systemBarInsets = insets.getInsets(systemBars())
-                            view.setPadding(0, systemBarInsets.top, 0, systemBarInsets.bottom)
-                            insets
-                        }
-                    }
-                    bottomSheet?.setBackgroundResource(R.drawable.bottom_sheet_with_top_rounded_corners)
-
-                    behavior.peekHeight = context.resources.displayMetrics.heightPixels
-                    behavior.state = BottomSheetBehavior.STATE_EXPANDED
-                }
-            }
+            configureAsDesktopDropdown(
+                fragment = this@TrustPanelFragment,
+                gravity = Gravity.TOP or Gravity.START,
+                widthDp = DESKTOP_PANEL_WIDTH_DP,
+                anchor = DesktopDropdownAnchor.URL_BAR_START,
+            )
         }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        dialog?.updateDesktopDropdownLayout(
+            fragment = this,
+            gravity = Gravity.TOP or Gravity.START,
+            widthDp = DESKTOP_PANEL_WIDTH_DP,
+            anchor = DesktopDropdownAnchor.URL_BAR_START,
+        )
+    }
 
     @Suppress("LongMethod", "MagicNumber", "CognitiveComplexMethod")
     override fun onCreateView(
@@ -203,30 +205,21 @@ class TrustPanelFragment : BottomSheetDialogFragment() {
 
             val initRoute = Route.ProtectionPanel
             var contentState: Route by remember { mutableStateOf(initRoute) }
-            val isShowingProtectionsDashboard =
-                remember(contentState) {
-                    contentState == Route.TrackersProtectionDashboard
-                }
 
             MenuDialogBottomSheet(
-                modifier = Modifier.padding(top = 8.dp, bottom = 5.dp).fillMaxWidth(0.1f),
+                modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
                 onRequestDismiss = ::dismiss,
                 menuHandleState =
                     MenuHandleState(
                         contentDescription = "",
-                        visible = !isShowingProtectionsDashboard,
+                        visible = false,
                     ),
                 snackbarHostState = snackbarHostState,
-                cornerShape =
-                    if (isShowingProtectionsDashboard) {
-                            MaterialTheme.shapes.extraLarge
-                        } else {
-                            MaterialTheme.shapes.large
-                        }
-                        .copy(
-                            bottomStart = CornerSize(0.dp),
-                            bottomEnd = CornerSize(0.dp),
-                        ),
+                cornerShape = RoundedCornerShape(DESKTOP_DROPDOWN_CORNER_DP.dp),
+                maxHeight = calculateDesktopDropdownMaxHeight(),
+                borderColor = MaterialTheme.colorScheme.outlineVariant,
+                elevation = 0.dp,
+                verticalPadding = 6.dp,
             ) {
                 val websiteInfoState by remember {
                     store.stateFlow.map { state -> state.websiteInfoState }

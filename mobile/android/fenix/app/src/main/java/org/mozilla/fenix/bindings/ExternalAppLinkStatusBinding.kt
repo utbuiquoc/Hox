@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 import mozilla.components.browser.state.selector.selectedTab
 import mozilla.components.browser.state.state.BrowserState
 import mozilla.components.browser.state.store.BrowserStore
@@ -29,6 +30,8 @@ import org.mozilla.fenix.utils.Settings
  * @param browserStore The browser store to observe state changes.
  * @param mainDispatcher The [CoroutineDispatcher] on which the state observation and updates will occur. Defaults to
  *   [Dispatchers.Main].
+ * @param ioDispatcher The [CoroutineDispatcher] used for package queries via [appLinksUseCases]. Defaults to
+ *   [Dispatchers.IO].
  */
 class ExternalAppLinkStatusBinding(
     private val settings: Settings,
@@ -36,6 +39,7 @@ class ExternalAppLinkStatusBinding(
     private val appStore: AppStore,
     browserStore: BrowserStore,
     mainDispatcher: CoroutineDispatcher = Dispatchers.Main,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : AbstractBinding<BrowserState>(browserStore, mainDispatcher) {
 
     override suspend fun onState(flow: Flow<BrowserState>) {
@@ -43,7 +47,13 @@ class ExternalAppLinkStatusBinding(
             .map { it.selectedTab?.content?.url }
             .distinctUntilChanged()
             .map { url ->
-                url != null && !settings.openInAppOpened && appLinksUseCases.appLinkRedirect(url).hasExternalApp()
+                if (url == null) {
+                    false
+                } else {
+                    withContext(ioDispatcher) {
+                        !settings.openInAppOpened && appLinksUseCases.appLinkRedirect(url).hasExternalApp()
+                    }
+                }
             }
             .distinctUntilChanged()
             .collect { shouldShowNotification ->

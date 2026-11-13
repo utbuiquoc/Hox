@@ -5,19 +5,19 @@
 package org.mozilla.fenix.tabhistory
 
 import android.app.Dialog
-import android.content.res.ColorStateList
+import android.content.res.Configuration
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.core.view.updateLayoutParams
 import androidx.navigation.fragment.findNavController
+import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.R as materialR
-import com.google.android.material.bottomsheet.BottomSheetBehavior
-import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
-import com.google.android.material.shape.CornerFamily
-import com.google.android.material.shape.MaterialShapeDrawable
-import com.google.android.material.shape.ShapeAppearanceModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.mapNotNull
@@ -25,21 +25,38 @@ import mozilla.components.browser.state.action.EngineAction
 import mozilla.components.browser.state.selector.findCustomTabOrSelectedTab
 import mozilla.components.lib.state.ext.flowScoped
 import mozilla.components.support.ktx.android.content.getColorFromAttr
+import mozilla.components.support.ktx.android.util.dpToPx
 import org.mozilla.fenix.R
+import org.mozilla.fenix.components.menu.compose.DESKTOP_DROPDOWN_CORNER_DP
+import org.mozilla.fenix.components.menu.compose.DESKTOP_DROPDOWN_WIDTH_DP
+import org.mozilla.fenix.components.menu.compose.calculateDesktopDropdownMaxHeight
+import org.mozilla.fenix.components.menu.compose.configureAsDesktopDropdown
+import org.mozilla.fenix.components.menu.compose.updateDesktopDropdownLayout
 import org.mozilla.fenix.databinding.FragmentTabHistoryDialogBinding
 import org.mozilla.fenix.ext.requireComponents
+
+private const val DROPDOWN_BORDER_WIDTH_DP = 1
 
 class TabHistoryDialogFragment : BottomSheetDialogFragment() {
 
     var customTabSessionId: String? = null
 
-    override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
-        return super.onCreateDialog(savedInstanceState).apply {
-            setOnShowListener {
-                val bottomSheet = findViewById<View?>(materialR.id.design_bottom_sheet)
-                bottomSheet?.setBackgroundResource(android.R.color.transparent)
-            }
+    override fun onCreateDialog(savedInstanceState: Bundle?): Dialog =
+        super.onCreateDialog(savedInstanceState).apply {
+            configureAsDesktopDropdown(
+                fragment = this@TabHistoryDialogFragment,
+                gravity = Gravity.TOP or Gravity.START,
+                widthDp = DESKTOP_DROPDOWN_WIDTH_DP,
+            )
         }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        dialog?.updateDesktopDropdownLayout(
+            fragment = this,
+            gravity = Gravity.TOP or Gravity.START,
+            widthDp = DESKTOP_DROPDOWN_WIDTH_DP,
+        )
     }
 
     override fun onCreateView(
@@ -53,22 +70,19 @@ class TabHistoryDialogFragment : BottomSheetDialogFragment() {
 
         val binding = FragmentTabHistoryDialogBinding.bind(view)
 
+        val metrics = resources.displayMetrics
         view.background =
-            MaterialShapeDrawable(
-                    ShapeAppearanceModel.builder()
-                        .setTopLeftCorner(
-                            CornerFamily.ROUNDED,
-                            resources.getDimension(R.dimen.bottom_sheet_corner_radius_28dp),
-                        )
-                        .setTopRightCorner(
-                            CornerFamily.ROUNDED,
-                            resources.getDimension(R.dimen.bottom_sheet_corner_radius_28dp),
-                        )
-                        .build()
+            GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = DESKTOP_DROPDOWN_CORNER_DP.dpToPx(metrics).toFloat()
+                setColor(view.context.getColorFromAttr(materialR.attr.colorSurface))
+                setStroke(
+                    DROPDOWN_BORDER_WIDTH_DP.dpToPx(metrics),
+                    view.context.getColorFromAttr(materialR.attr.colorOutlineVariant),
                 )
-                .apply {
-                    fillColor = ColorStateList.valueOf(view.context.getColorFromAttr(materialR.attr.colorSurface))
-                }
+            }
+        view.elevation = 0f
+        view.clipToOutline = true
 
         customTabSessionId = requireArguments().getString(EXTRA_SESSION_ID)
 
@@ -84,6 +98,13 @@ class TabHistoryDialogFragment : BottomSheetDialogFragment() {
                 expandDialog = ::expand,
                 interactor = TabHistoryInteractor(controller),
             )
+
+        val maxHeightPx = (calculateDesktopDropdownMaxHeight().value * metrics.density).toInt()
+        view.findViewById<RecyclerView>(R.id.tabHistoryRecyclerView)
+            ?.updateLayoutParams<ConstraintLayout.LayoutParams> {
+                constrainedHeight = true
+                matchConstraintMaxHeight = maxHeightPx
+            }
 
         // flush the session state for showing the most recent the engine session state of the selected tab.
         requireComponents.core.store.state.selectedTabId?.let {
@@ -105,9 +126,7 @@ class TabHistoryDialogFragment : BottomSheetDialogFragment() {
         }
     }
 
-    private fun expand() {
-        (dialog as BottomSheetDialog).behavior.state = BottomSheetBehavior.STATE_EXPANDED
-    }
+    private fun expand() = Unit
 
     companion object {
         const val EXTRA_SESSION_ID = "activeSessionId"

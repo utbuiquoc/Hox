@@ -351,7 +351,7 @@ class Core(
         val middlewareList =
             listOf(
                 ProfileMarkerMiddleware(markerName = "BrowserStore", profiler = engine.profiler),
-                LogMiddleware(tag = "BrowserStore", shouldIncludeDetailedData = { Config.channel.isDebug }),
+                LogMiddleware(tag = "BrowserStore", shouldIncludeDetailedData = { false }),
                 LastAccessMiddleware(),
                 RecentlyClosedMiddleware(recentlyClosedTabsStorage, RECENTLY_CLOSED_MAX, applicationScope),
                 DownloadMiddleware(

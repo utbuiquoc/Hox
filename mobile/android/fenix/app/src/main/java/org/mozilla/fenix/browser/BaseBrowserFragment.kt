@@ -78,6 +78,7 @@ import mozilla.components.compose.browser.toolbar.store.BrowserToolbarStore
 import mozilla.components.concept.base.crash.Breadcrumb
 import mozilla.components.concept.engine.permission.SitePermissions
 import mozilla.components.concept.engine.prompt.ShareData
+import mozilla.components.concept.engine.utils.ABOUT_HOME_URL
 import mozilla.components.concept.storage.Address
 import mozilla.components.concept.storage.CreditCardEntry
 import mozilla.components.concept.storage.Login
@@ -1660,9 +1661,15 @@ abstract class BaseBrowserFragment :
                 hideWhenKeyboardShown = settings.shouldUseBottomTabStrip,
                 onAddTabClick = {
                     if (settings.enableHomepageAsNewTab) {
+                        sessionFeature.get()?.stop()
                         requireComponents.useCases.fenixBrowserUseCases.addNewHomepageTab(
-                            private = appStore.state.mode.isPrivate
+                            private = appStore.state.mode.isPrivate,
+                            startLoading = false,
                         )
+                        val navController = findNavController()
+                        if (!navController.popBackStack(R.id.homeFragment, false)) {
+                            navController.navigate(NavGraphDirections.actionGlobalHome())
+                        }
                     } else {
                         findNavController()
                             .navigate(
@@ -1685,7 +1692,15 @@ abstract class BaseBrowserFragment :
                         findNavController().navigate(BrowserFragmentDirections.actionGlobalHome())
                     }
                 },
-                onSelectedTabClick = {},
+                onSelectedTabClick = { url ->
+                    if (url == ABOUT_HOME_URL && settings.enableHomepageAsNewTab) {
+                        sessionFeature.get()?.stop()
+                        val navController = findNavController()
+                        if (!navController.popBackStack(R.id.homeFragment, false)) {
+                            navController.navigate(NavGraphDirections.actionGlobalHome())
+                        }
+                    }
+                },
                 onCloseTabClick = { isPrivate ->
                     showUndoSnackbar(requireContext().tabClosedUndoMessage(isPrivate))
                 },
@@ -2148,6 +2163,9 @@ abstract class BaseBrowserFragment :
                     it.selectedTab
                 }
                 .collect {
+                    if (it.content.url == ABOUT_HOME_URL) {
+                        return@collect
+                    }
                     dismissDownloadDialogs()
                     dismissRenameDialog()
                     handleTabSelected(it)

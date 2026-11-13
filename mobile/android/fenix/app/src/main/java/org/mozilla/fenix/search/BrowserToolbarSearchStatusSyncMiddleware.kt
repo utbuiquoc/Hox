@@ -43,6 +43,9 @@ class BrowserToolbarSearchStatusSyncMiddleware(
         next(action)
 
         if (action is Init) {
+            if (!appStore.state.searchState.isSearchActive && store.state.isEditMode()) {
+                store.dispatch(ExitEditMode)
+            }
             syncSearchActive(store)
         }
 

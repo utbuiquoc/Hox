@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.res.Configuration
 import android.net.ConnectivityManager
 import android.os.Bundle
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -16,13 +17,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.core.content.getSystemService
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat.Type.systemBars
 import androidx.fragment.compose.content
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewModelScope
-import com.google.android.material.R as materialR
-import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.CoroutineScope
@@ -35,11 +32,14 @@ import mozilla.components.lib.state.helpers.StoreProvider.Companion.storeProvide
 import mozilla.components.service.fxa.FxaService
 import mozilla.components.service.fxa.manager.SCOPE_PROFILE
 import mozilla.components.service.fxa.manager.SCOPE_SYNC
-import mozilla.components.support.utils.ext.isLandscape
 import mozilla.telemetry.glean.private.NoExtras
 import org.mozilla.fenix.GleanMetrics.SyncAuth
 import org.mozilla.fenix.R
 import org.mozilla.fenix.components.accounts.FenixFxAEntryPoint
+import org.mozilla.fenix.components.menu.compose.DESKTOP_PANEL_WIDTH_DP
+import org.mozilla.fenix.components.menu.compose.calculateDesktopDropdownMaxHeight
+import org.mozilla.fenix.components.menu.compose.configureAsDesktopDropdown
+import org.mozilla.fenix.components.menu.compose.updateDesktopDropdownLayout
 import org.mozilla.fenix.components.share.store.ShareUiAction
 import org.mozilla.fenix.components.share.store.ShareUiState
 import org.mozilla.fenix.components.share.store.ShareUiStore
@@ -94,6 +94,7 @@ class SendToDevicesDialogFragment : BottomSheetDialogFragment() {
                 onLearnMoreClicked = {
                     openLearnMoreLink()
                 },
+                maxHeight = calculateDesktopDropdownMaxHeight(),
             )
         }
     }
@@ -111,39 +112,27 @@ class SendToDevicesDialogFragment : BottomSheetDialogFragment() {
         viewLifecycleOwner.lifecycle.addObserver(deviceObserver)
     }
 
-    override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
-        return super.onCreateDialog(savedInstanceState).apply {
-            setOnShowListener {
-                val bottomSheet = findViewById<View>(materialR.id.design_bottom_sheet) ?: return@setOnShowListener
-                ViewCompat.setOnApplyWindowInsetsListener(bottomSheet) { view, insets ->
-                    val systemBarInsets = insets.getInsets(systemBars())
-                    view.setPadding(0, systemBarInsets.top, 0, systemBarInsets.bottom)
-                    insets
-                }
-                bottomSheet.setBackgroundResource(R.drawable.bottom_sheet_with_top_rounded_corners)
-            }
+    override fun onCreateDialog(savedInstanceState: Bundle?): Dialog =
+        super.onCreateDialog(savedInstanceState).apply {
+            configureAsDesktopDropdown(
+                fragment = this@SendToDevicesDialogFragment,
+                gravity = Gravity.TOP or Gravity.END,
+                widthDp = DESKTOP_PANEL_WIDTH_DP,
+            )
         }
-    }
 
     override fun onStart() {
         super.onStart()
-        updateSheetHeight()
         loadTabData(arguments)
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        updateSheetHeight()
-    }
-
-    private fun updateSheetHeight() {
-        val bottomSheet = dialog?.findViewById<View>(materialR.id.design_bottom_sheet) ?: return
-        BottomSheetBehavior.from(bottomSheet).peekHeight =
-            if (requireContext().isLandscape()) {
-                resources.displayMetrics.heightPixels
-            } else {
-                BottomSheetBehavior.PEEK_HEIGHT_AUTO
-            }
+        dialog?.updateDesktopDropdownLayout(
+            fragment = this,
+            gravity = Gravity.TOP or Gravity.END,
+            widthDp = DESKTOP_PANEL_WIDTH_DP,
+        )
     }
 
     internal fun loadTabData(bundle: Bundle?) {

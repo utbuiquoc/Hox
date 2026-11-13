@@ -12,6 +12,7 @@ import androidx.navigation.NavController
 import mozilla.components.browser.state.store.BrowserStore
 import mozilla.components.compose.browser.toolbar.store.BrowserToolbarState
 import mozilla.components.compose.browser.toolbar.store.BrowserToolbarStore
+import mozilla.components.compose.browser.toolbar.store.Mode
 import mozilla.components.lib.state.helpers.StoreProvider.Companion.fragmentStore
 import org.mozilla.fenix.browser.browsingmode.BrowsingModeManager
 import org.mozilla.fenix.components.AppStore
@@ -47,9 +48,15 @@ object HomeToolbarStoreBuilder {
     ) =
         fragment.fragmentStore(BrowserToolbarState()) {
             val lifecycleScope = fragment.viewLifecycleOwner.lifecycle.coroutineScope
+            val initialState =
+                if (!appStore.state.searchState.isSearchActive && it.isEditMode()) {
+                    it.copy(mode = Mode.DISPLAY)
+                } else {
+                    it
+                }
 
             BrowserToolbarStore(
-                initialState = it,
+                initialState = initialState,
                 middleware =
                     listOf(
                         BrowserToolbarSearchStatusSyncMiddleware(

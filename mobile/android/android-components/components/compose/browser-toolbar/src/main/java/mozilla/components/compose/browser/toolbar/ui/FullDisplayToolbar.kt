@@ -113,6 +113,7 @@ internal fun FullDisplayToolbar(
                                     }.dp,
                             )
                             .height(48.dp)
+                            .trackUrlPillStartAnchor()
                             .background(
                                 color = MaterialTheme.colorScheme.surfaceContainerHighest,
                                 shape = CircleShape,

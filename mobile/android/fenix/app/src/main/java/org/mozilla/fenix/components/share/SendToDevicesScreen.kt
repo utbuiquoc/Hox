@@ -4,6 +4,7 @@
 
 package org.mozilla.fenix.components.share
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -11,10 +12,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -30,14 +33,15 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.tooling.preview.PreviewLightDark
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import mozilla.components.compose.base.BottomSheetHandle
 import mozilla.components.compose.base.button.FilledButton
 import mozilla.components.compose.base.button.TextButton
 import mozilla.components.concept.sync.Device
 import mozilla.components.concept.sync.DeviceType
 import mozilla.components.ui.icons.R as IconsR
 import org.mozilla.fenix.R
+import org.mozilla.fenix.components.menu.compose.DESKTOP_DROPDOWN_CORNER_DP
 import org.mozilla.fenix.components.menu.compose.MenuGroup
 import org.mozilla.fenix.components.menu.compose.MenuItem
 import org.mozilla.fenix.components.share.store.ShareUiState
@@ -55,31 +59,30 @@ internal fun SendToDevicesContent(
     onSignOutClicked: () -> Unit,
     onRetryClicked: () -> Unit,
     onLearnMoreClicked: () -> Unit,
+    maxHeight: Dp = Dp.Unspecified,
 ) {
     val singleDevices = uiState.singleDevices
     FirefoxTheme {
-        Column(
+        Surface(
             modifier =
                 Modifier.fillMaxWidth()
-                    .padding(
-                        start = FirefoxTheme.layout.space.static200,
-                        end = FirefoxTheme.layout.space.static200,
-                    )
-                    .nestedScroll(rememberNestedScrollInteropConnection())
+                    .padding(bottom = 8.dp)
+                    .heightIn(max = maxHeight),
+            shape = RoundedCornerShape(DESKTOP_DROPDOWN_CORNER_DP.dp),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            shadowElevation = 0.dp,
         ) {
-            Spacer(modifier = Modifier.height(20.dp))
-
             Column(
-                modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier =
+                    Modifier.fillMaxWidth()
+                        .padding(
+                            horizontal = FirefoxTheme.layout.space.static200,
+                            vertical = 12.dp,
+                        )
+                        .nestedScroll(rememberNestedScrollInteropConnection())
+                        .verticalScroll(rememberScrollState()),
             ) {
-                BottomSheetHandle(
-                    onRequestDismiss = onDismiss,
-                    contentDescription =
-                        stringResource(R.string.send_to_devices_bottom_sheet_close_content_description),
-                    modifier = Modifier.padding(vertical = 16.dp).align(Alignment.CenterHorizontally),
-                )
-
                 Text(
                     text = stringResource(id = R.string.share_device_subheader),
                     style = FirefoxTheme.typography.headline7,
@@ -88,15 +91,13 @@ internal fun SendToDevicesContent(
                     modifier =
                         Modifier.fillMaxWidth()
                             .padding(
-                                bottom = 16.dp,
-                                top = 8.dp,
-                                start = 16.dp,
-                                end = 16.dp,
+                                bottom = 12.dp,
+                                top = 4.dp,
+                                start = 12.dp,
+                                end = 12.dp,
                             ),
                 )
-            }
 
-            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 when (sendToDevicesUiMode(isLoading = uiState.isLoading, devices = uiState.devices)) {
                     SendToDevicesUiMode.Loading -> LoadingScreen()
                     SendToDevicesUiMode.Offline -> NoInternetConnectionScreen(onRetryClicked)

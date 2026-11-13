@@ -311,6 +311,7 @@ class BrowserToolbarMiddleware(
                 updateStartPageActions(store)
                 updateCurrentPageOrigin(store)
                 updateEndPageActions(store)
+                updateInitialEndBrowserActions(store)
 
                 scope.launch {
                     updateEndBrowserActions(store)
@@ -766,6 +767,62 @@ class BrowserToolbarMiddleware(
         store.dispatch(BrowserActionsEndUpdated(buildEndBrowserActions()))
     }
 
+    private fun updateInitialEndBrowserActions(store: Store<BrowserToolbarState, BrowserToolbarAction>) {
+        store.dispatch(BrowserActionsEndUpdated(buildInitialEndBrowserActions()))
+    }
+
+    private fun buildInitialEndBrowserActions(): List<Action> {
+        val isWideWindow = isWideScreen()
+        val isTallWindow = isTallScreen()
+        val shouldUseExpandedToolbar = settings.shouldUseExpandedToolbar
+        val primarySlotAction =
+            ShortcutType.fromValue(settings.activeSimpleToolbarShortcutKey)?.toInitialToolbarAction()
+
+        val configs =
+            listOfNotNull(
+                primarySlotAction?.let {
+                    ToolbarActionConfig(it, true) {
+                        !shouldUseExpandedToolbar || !isTallWindow || isWideWindow
+                    }
+                },
+                ToolbarActionConfig(ToolbarAction.TabCounter) {
+                    !shouldUseExpandedToolbar || !isTallWindow || isWideWindow
+                },
+                ToolbarActionConfig(ToolbarAction.Menu) {
+                    !shouldUseExpandedToolbar || !isTallWindow || isWideWindow
+                },
+            )
+
+        return configs.mapNotNull { config ->
+            config
+                .takeIf { it.isVisible() }
+                ?.let {
+                    buildAction(
+                        toolbarAction = it.action,
+                        source = Source.AddressBar.BrowserEnd,
+                        isShortcut = it.isShortcut,
+                    )
+                }
+        }
+    }
+
+    private fun ShortcutType.toInitialToolbarAction(): ToolbarAction? =
+        when (this) {
+            ShortcutType.NEW_TAB -> ToolbarAction.NewTab
+            ShortcutType.SHARE -> ToolbarAction.Share
+            ShortcutType.BOOKMARK -> ToolbarAction.Bookmark
+            ShortcutType.TRANSLATE -> ToolbarAction.NewTab
+            ShortcutType.HOMEPAGE -> ToolbarAction.Homepage
+            ShortcutType.BACK -> ToolbarAction.Back
+            ShortcutType.SUMMARIZE ->
+                when {
+                    summarizationFeatureSettings.canShowFeature -> ToolbarAction.Summarize
+                    settings.isTabStripEnabled -> ToolbarAction.Share
+                    else -> ToolbarAction.NewTab
+                }
+            ShortcutType.NONE -> null
+        }
+
     private fun buildStartPageActions(): List<Action> {
         return listOf(
                 ToolbarActionConfig(ToolbarAction.SiteInfo) {
@@ -949,7 +1006,13 @@ class BrowserToolbarMiddleware(
 
     private fun openNewTab(browsingMode: BrowsingMode) {
         if (settings.enableHomepageAsNewTab) {
-            useCases.fenixBrowserUseCases.addNewHomepageTab(private = browsingMode.isPrivate)
+            useCases.fenixBrowserUseCases.addNewHomepageTab(
+                private = browsingMode.isPrivate,
+                startLoading = false,
+            )
+            if (!navController.popBackStack(R.id.homeFragment, false)) {
+                navController.navigate(BrowserFragmentDirections.actionGlobalHome())
+            }
         } else {
             val focusOnAddressBar = !settings.enableHomepageSearchBar && !settings.enableHomepageTrendingRecentSearch
 
@@ -1036,45 +1099,81 @@ class BrowserToolbarMiddleware(
         }
     }
 
-    private fun updateCurrentPageOrigin(store: Store<BrowserToolbarState, BrowserToolbarAction>) = scope.launch {
-        val url =
-            browserStore.state.selectedTab?.content?.url?.let {
-                it.applyRegistrableDomainSpan(publicSuffixList)
-            }
-        val searchTerms = browserStore.state.selectedTab?.content?.searchTerms ?: ""
-
-        val baseDisplayUrl = url?.let { originalUrl ->
-            if (originalUrl.toString() == ABOUT_HOME_URL) {
-                // Default to showing the toolbar hint when the URL is ABOUT_HOME.
-                ""
-            } else if (searchTerms.isNotBlank()) {
-                searchTerms
-            } else {
-                URLStringUtils.toDisplayUrl(originalUrl)
-            }
-        }
-        val displayUrl =
-            if (browserScreenStore.state.isShowingTabReloadCover && !baseDisplayUrl.isNullOrEmpty()) {
-                TextUtils.concat(
-                    uiContext.getText(R.string.browser_toolbar_cached_page_indicator),
-                    " | ",
-                    baseDisplayUrl,
-                )
-            } else {
-                baseDisplayUrl
-            }
-
-        store.dispatch(
-            BrowserDisplayToolbarAction.PageOriginUpdated(
-                PageOrigin(
-                    hint = R.string.search_hint,
-                    title = null,
-                    url = displayUrl,
-                    contextualMenuOptions = ContextualMenuOption.entries,
-                    onClick = OriginClicked,
+    private fun updateCurrentPageOrigin(store: Store<BrowserToolbarState, BrowserToolbarAction>) {
+        val rawUrl = browserStore.state.selectedTab?.content?.url
+        val initialSearchTerms = browserStore.state.selectedTab?.content?.searchTerms ?: ""
+        if (store.state.displayState.pageOrigin.url == null && rawUrl != null) {
+            val initialBaseDisplayUrl =
+                if (rawUrl == ABOUT_HOME_URL) {
+                    ""
+                } else if (initialSearchTerms.isNotBlank()) {
+                    initialSearchTerms
+                } else {
+                    URLStringUtils.toDisplayUrl(rawUrl)
+                }
+            val initialDisplayUrl =
+                if (browserScreenStore.state.isShowingTabReloadCover && initialBaseDisplayUrl.isNotEmpty()) {
+                    TextUtils.concat(
+                        uiContext.getText(R.string.browser_toolbar_cached_page_indicator),
+                        " | ",
+                        initialBaseDisplayUrl,
+                    )
+                } else {
+                    initialBaseDisplayUrl
+                }
+            store.dispatch(
+                BrowserDisplayToolbarAction.PageOriginUpdated(
+                    PageOrigin(
+                        hint = R.string.search_hint,
+                        title = null,
+                        url = initialDisplayUrl,
+                        contextualMenuOptions = ContextualMenuOption.entries,
+                        onClick = OriginClicked,
+                    )
                 )
             )
-        )
+        }
+
+        scope.launch {
+            val url =
+                browserStore.state.selectedTab?.content?.url?.let {
+                    it.applyRegistrableDomainSpan(publicSuffixList)
+                }
+            val searchTerms = browserStore.state.selectedTab?.content?.searchTerms ?: ""
+
+            val baseDisplayUrl = url?.let { originalUrl ->
+                if (originalUrl.toString() == ABOUT_HOME_URL) {
+                    // Default to showing the toolbar hint when the URL is ABOUT_HOME.
+                    ""
+                } else if (searchTerms.isNotBlank()) {
+                    searchTerms
+                } else {
+                    URLStringUtils.toDisplayUrl(originalUrl)
+                }
+            }
+            val displayUrl =
+                if (browserScreenStore.state.isShowingTabReloadCover && !baseDisplayUrl.isNullOrEmpty()) {
+                    TextUtils.concat(
+                        uiContext.getText(R.string.browser_toolbar_cached_page_indicator),
+                        " | ",
+                        baseDisplayUrl,
+                    )
+                } else {
+                    baseDisplayUrl
+                }
+
+            store.dispatch(
+                BrowserDisplayToolbarAction.PageOriginUpdated(
+                    PageOrigin(
+                        hint = R.string.search_hint,
+                        title = null,
+                        url = displayUrl,
+                        contextualMenuOptions = ContextualMenuOption.entries,
+                        onClick = OriginClicked,
+                    )
+                )
+            )
+        }
     }
 
     private fun observePageSecurityUpdates(store: Store<BrowserToolbarState, BrowserToolbarAction>) {

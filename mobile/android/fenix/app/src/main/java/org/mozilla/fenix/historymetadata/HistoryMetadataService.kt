@@ -93,10 +93,10 @@ class DefaultHistoryMetadataService(
         val now = currentTimeMillis()
         val lastAccess = tab.lastAccess
         if (lastAccess == 0L) {
-            logger.debug("Not updating metadata for tab $tab - lastAccess=0")
+            logger.debug("Not updating metadata for tab ${tab.id} - lastAccess=0")
             return
         } else {
-            logger.debug("Updating metadata for tab $tab")
+            logger.debug("Updating metadata for tab ${tab.id}")
         }
 
         // If it's possible that multiple threads overlap and run this block simultaneously, we

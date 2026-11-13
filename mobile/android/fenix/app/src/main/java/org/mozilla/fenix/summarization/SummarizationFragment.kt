@@ -7,23 +7,29 @@ package org.mozilla.fenix.summarization
 import android.app.Dialog
 import android.content.Context
 import android.content.DialogInterface
-import android.graphics.Color
+import android.content.res.Configuration
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Bundle
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.core.view.ViewCompat
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.fragment.app.viewModels
 import androidx.fragment.compose.content
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.fragment.findNavController
 import androidx.navigation.fragment.navArgs
-import com.google.android.material.R as materialR
-import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import mozilla.components.browser.state.selector.findTabOrCustomTabOrSelectedTab
 import mozilla.components.browser.state.state.SessionState
@@ -35,16 +41,18 @@ import mozilla.components.feature.summarize.ViewDismissed
 import mozilla.components.feature.summarize.settings.LearnMoreHandled
 import mozilla.components.feature.summarize.settings.SummarizeSettingsState
 import mozilla.components.support.base.log.logger.Logger
-import mozilla.components.support.ktx.android.view.setNavigationBarColorCompat
-import mozilla.components.support.utils.ext.top
 import org.mozilla.fenix.R
 import org.mozilla.fenix.components.accounts.FenixFxAEntryPoint
+import org.mozilla.fenix.components.menu.compose.DESKTOP_DROPDOWN_CORNER_DP
+import org.mozilla.fenix.components.menu.compose.calculateDesktopDropdownMaxHeight
+import org.mozilla.fenix.components.menu.compose.configureAsDesktopDropdown
+import org.mozilla.fenix.components.menu.compose.updateDesktopDropdownLayout
 import org.mozilla.fenix.ext.requireComponents
 import org.mozilla.fenix.settings.SupportUtils
 import org.mozilla.fenix.tabstray.ext.toDisplayTitle
 import org.mozilla.fenix.theme.FirefoxTheme
 
-private const val HIDING_FRICTION = 0.9f
+private const val SUMMARIZATION_DROPDOWN_WIDTH_DP = 380
 
 private fun Context.getConnectionType(): ConnectionType {
     val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -103,18 +111,6 @@ class SummarizationFragment : BottomSheetDialogFragment() {
         }
     }
 
-    override fun onStart() {
-        super.onStart()
-        val bottomSheet = dialog?.findViewById<View>(materialR.id.design_bottom_sheet)
-        bottomSheet?.let { sheet ->
-            with(BottomSheetBehavior.from(sheet)) {
-                skipCollapsed = true
-                state = BottomSheetBehavior.STATE_EXPANDED
-                hideFriction = HIDING_FRICTION
-            }
-        }
-    }
-
     override fun onDismiss(dialog: DialogInterface) {
         super.onDismiss(dialog)
         storeViewModel.store.dispatch(ViewDismissed(isEngineAvailable))
@@ -122,18 +118,21 @@ class SummarizationFragment : BottomSheetDialogFragment() {
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog =
         super.onCreateDialog(savedInstanceState).apply {
-            setOnShowListener {
-                val bottomSheet = findViewById<View>(materialR.id.design_bottom_sheet) ?: return@setOnShowListener
-                ViewCompat.setOnApplyWindowInsetsListener(bottomSheet) { view, insets ->
-                    // edge-to-edge workaround
-                    // exclude the bottom insets so that we can handle the insets in compose
-                    view.setPadding(0, insets.top(), 0, 0)
-                    insets
-                }
-                bottomSheet.setBackgroundResource(android.R.color.transparent)
-                dialog?.window?.setNavigationBarColorCompat(Color.TRANSPARENT)
-            }
+            configureAsDesktopDropdown(
+                fragment = this@SummarizationFragment,
+                gravity = Gravity.TOP or Gravity.END,
+                widthDp = SUMMARIZATION_DROPDOWN_WIDTH_DP,
+            )
         }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        dialog?.updateDesktopDropdownLayout(
+            fragment = this,
+            gravity = Gravity.TOP or Gravity.END,
+            widthDp = SUMMARIZATION_DROPDOWN_WIDTH_DP,
+        )
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -169,11 +168,21 @@ class SummarizationFragment : BottomSheetDialogFragment() {
             }
 
             FirefoxTheme {
-                SummarizationUi(
-                    productName = getString(R.string.app_name),
-                    store = storeViewModel.store,
-                    resolveError = { throwable -> ErrorCodeLookup.lookup(throwable).code },
-                )
+                Surface(
+                    modifier =
+                        Modifier.padding(bottom = 8.dp)
+                            .heightIn(max = calculateDesktopDropdownMaxHeight()),
+                    shape = RoundedCornerShape(DESKTOP_DROPDOWN_CORNER_DP.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    shadowElevation = 0.dp,
+                ) {
+                    SummarizationUi(
+                        productName = getString(R.string.app_name),
+                        store = storeViewModel.store,
+                        resolveError = { throwable -> ErrorCodeLookup.lookup(throwable).code },
+                    )
+                }
             }
         }
     }

@@ -11,15 +11,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -28,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -182,64 +178,8 @@ fun MainMenu(
     extensionSubmenu: @Composable () -> Unit,
 ) {
     MenuFrame(
-        contentModifier =
-            Modifier.padding(
-                start = 8.dp,
-                top =
-                    if (accessPoint != MenuAccessPoint.Home && (isBottomToolbar || isExpandedToolbarEnabled)) {
-                        0.dp
-                    } else {
-                        8.dp
-                    },
-                end = 8.dp,
-                bottom =
-                    if (accessPoint != MenuAccessPoint.Home && (isBottomToolbar || isExpandedToolbarEnabled)) {
-                        84.dp
-                    } else {
-                        16.dp
-                    },
-            ),
+        contentModifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
         scrollState = scrollState,
-        header = {
-            if (accessPoint != MenuAccessPoint.Home && !isBottomToolbar && !isExpandedToolbarEnabled) {
-                MenuNavigation(
-                    isSiteLoading = isSiteLoading,
-                    isExtensionsExpanded = isExtensionsExpanded,
-                    isMoreMenuExpanded = isMoreMenuExpanded,
-                    onBackButtonClick = onBackButtonClick,
-                    onForwardButtonClick = onForwardButtonClick,
-                    onRefreshButtonClick = onRefreshButtonClick,
-                    onStopButtonClick = onStopButtonClick,
-                    onShareButtonClick = onShareButtonClick,
-                    goBackState = if (canGoBack) MenuItemState.ENABLED else MenuItemState.DISABLED,
-                    goForwardState = if (canGoForward) MenuItemState.ENABLED else MenuItemState.DISABLED,
-                )
-
-                if (scrollState.canScrollBackward) {
-                    HorizontalDivider()
-                }
-            }
-        },
-        footer = {
-            if (accessPoint != MenuAccessPoint.Home && (isBottomToolbar || isExpandedToolbarEnabled)) {
-                if (scrollState.canScrollBackward) {
-                    HorizontalDivider()
-                }
-
-                MenuNavigation(
-                    isSiteLoading = isSiteLoading,
-                    isExtensionsExpanded = isExtensionsExpanded,
-                    isMoreMenuExpanded = isMoreMenuExpanded,
-                    onBackButtonClick = onBackButtonClick,
-                    onForwardButtonClick = onForwardButtonClick,
-                    onRefreshButtonClick = onRefreshButtonClick,
-                    onStopButtonClick = onStopButtonClick,
-                    onShareButtonClick = onShareButtonClick,
-                    goBackState = if (canGoBack) MenuItemState.ENABLED else MenuItemState.DISABLED,
-                    goForwardState = if (canGoForward) MenuItemState.ENABLED else MenuItemState.DISABLED,
-                )
-            }
-        },
     ) {
         if (isReaderViewActive && accessPoint != MenuAccessPoint.Home) {
             MenuGroup {
@@ -249,17 +189,7 @@ fun MainMenu(
                     onClick = onCustomizeReaderViewMenuClick,
                 )
             }
-        }
-
-        if (accessPoint == MenuAccessPoint.Home && showBanner) {
-            MenuBanner(
-                onDismiss = {
-                    onBannerDismiss()
-                },
-                onClick = {
-                    onBannerClick()
-                },
-            )
+            MenuGroupDivider()
         }
 
         if (showIPProtection) {
@@ -270,6 +200,7 @@ fun MainMenu(
                     onNavigate = onIPProtectionNavigate,
                 )
             }
+            MenuGroupDivider()
         }
 
         if (accessPoint == MenuAccessPoint.Home) {
@@ -286,6 +217,7 @@ fun MainMenu(
                     extensionSubmenu = extensionSubmenu,
                 )
             }
+            MenuGroupDivider()
         }
 
         if (accessPoint == MenuAccessPoint.Browser) {
@@ -310,6 +242,7 @@ fun MainMenu(
                 moreSettingsSubmenu = moreSettingsSubmenu,
                 extensionSubmenu = extensionSubmenu,
             )
+            MenuGroupDivider()
         }
 
         LibraryMenuGroup(
@@ -320,6 +253,8 @@ fun MainMenu(
             onDownloadsMenuClick = onDownloadsMenuClick,
             onPasswordsMenuClick = onPasswordsMenuClick,
         )
+
+        MenuGroupDivider()
 
         MenuGroup {
             MozillaAccountMenuItem(
@@ -344,6 +279,7 @@ fun MainMenu(
         }
 
         if (showQuitMenu) {
+            MenuGroupDivider()
             QuitMenuGroup(onQuitMenuClick = onQuitMenuClick)
         }
     }
@@ -511,7 +447,14 @@ private fun MoreMenuButtonGroup(
 }
 
 @Composable
-@Suppress("LongMethod")
+private fun MenuGroupDivider() {
+    HorizontalDivider(
+        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+    )
+}
+
+@Composable
 private fun LibraryMenuGroup(
     showPasswords: Boolean,
     isDownloadHighlighted: Boolean = false,
@@ -520,72 +463,30 @@ private fun LibraryMenuGroup(
     onDownloadsMenuClick: () -> Unit,
     onPasswordsMenuClick: () -> Unit,
 ) {
-    val spacerWidth = 2.dp
-
-    val leftShape =
-        MaterialTheme.shapes.extraLarge.copy(
-            topEnd = MaterialTheme.shapes.extraSmall.topEnd,
-            bottomEnd = MaterialTheme.shapes.extraSmall.bottomEnd,
-        )
-    val middleShape = MaterialTheme.shapes.extraSmall
-    val rightShape =
-        MaterialTheme.shapes.extraLarge.copy(
-            topStart = MaterialTheme.shapes.extraSmall.topStart,
-            bottomStart = MaterialTheme.shapes.extraSmall.bottomStart,
-        )
-
-    Row(
-        Modifier.fillMaxWidth().height(IntrinsicSize.Min).semantics {
-            this.collectionInfo =
-                CollectionInfo(
-                    rowCount = 1,
-                    columnCount = if (showPasswords) 4 else 3,
-                )
-        },
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        LibraryMenuItem(
-            modifier = Modifier.weight(1f).fillMaxHeight(),
-            iconRes = iconsR.drawable.mozac_ic_history_24,
-            labelRes = R.string.library_history,
-            shape = leftShape,
-            index = 0,
+    MenuGroup {
+        MenuItem(
+            label = stringResource(id = R.string.library_history),
+            beforeIconPainter = painterResource(id = iconsR.drawable.mozac_ic_history_24),
             onClick = onHistoryMenuClick,
         )
 
-        Spacer(Modifier.width(spacerWidth))
-
-        LibraryMenuItem(
-            modifier = Modifier.weight(1f).fillMaxHeight(),
-            iconRes = iconsR.drawable.mozac_ic_bookmark_tray_fill_24,
-            labelRes = R.string.library_bookmarks,
-            shape = middleShape,
-            index = 1,
+        MenuItem(
+            label = stringResource(id = R.string.library_bookmarks),
+            beforeIconPainter = painterResource(id = iconsR.drawable.mozac_ic_bookmark_tray_fill_24),
             onClick = onBookmarksMenuClick,
         )
 
-        Spacer(Modifier.width(spacerWidth))
-
-        LibraryMenuItem(
-            modifier = Modifier.weight(1f).fillMaxHeight(),
-            isHighlighted = isDownloadHighlighted,
-            iconRes = iconsR.drawable.mozac_ic_download_24,
-            labelRes = R.string.library_downloads,
-            shape = if (showPasswords) middleShape else rightShape,
-            index = 2,
+        MenuItem(
+            label = stringResource(id = R.string.library_downloads),
+            beforeIconPainter = painterResource(id = iconsR.drawable.mozac_ic_download_24),
+            isBeforeIconHighlighted = isDownloadHighlighted,
             onClick = onDownloadsMenuClick,
         )
 
         if (showPasswords) {
-            Spacer(Modifier.width(spacerWidth))
-
-            LibraryMenuItem(
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-                iconRes = iconsR.drawable.mozac_ic_login_24,
-                labelRes = R.string.browser_menu_passwords,
-                shape = rightShape,
-                index = 3,
+            MenuItem(
+                label = stringResource(id = R.string.browser_menu_passwords),
+                beforeIconPainter = painterResource(id = iconsR.drawable.mozac_ic_login_24),
                 onClick = onPasswordsMenuClick,
             )
         }
@@ -710,9 +611,9 @@ private fun MoreExtensionsMenuItem(
                     role = Role.Button
                     contentDescription = label
                 }
-                .wrapContentSize()
-                .clip(shape = MaterialTheme.shapes.extraSmall)
-                .background(color = MaterialTheme.colorScheme.surfaceBright)
+                .fillMaxWidth()
+                .clip(shape = RoundedCornerShape(6.dp))
+                .background(color = Color.Transparent)
     ) {
         MenuTextItem(
             label = label,

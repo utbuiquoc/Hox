@@ -7,6 +7,7 @@ package org.mozilla.fenix.home.toolbar
 import android.content.Context
 import android.content.Intent
 import android.speech.RecognizerIntent
+import android.view.View
 import androidx.annotation.VisibleForTesting
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Easing
@@ -20,10 +21,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.semantics.testTagsAsResourceId
@@ -94,7 +99,7 @@ internal class HomeToolbarComposable(
     private val searchSuggestionsContent: @Composable (Modifier) -> Unit,
     private val navigationBarContent: (@Composable () -> Unit)?,
 ) : FenixHomeToolbar {
-    private val addressBarVisibility = mutableStateOf(true)
+    private val addressBarVisibility = mutableStateOf(!settings.isHomepageMiddleSearchEnabled)
 
     init {
         // Reset the toolbar visibility & position whenever coming back to the home screen
@@ -162,6 +167,35 @@ internal class HomeToolbarComposable(
         val isSearchActive = appStore.observeAsComposableState { it.searchState.isSearchActive }.value
         val isTabStripAtBottom =
             remember { shouldUseBottomToolbar && settings.shouldShowTabStripAtBottom } && !isSearchActive
+        val hostView = LocalView.current
+
+        DisposableEffect(hostView, shouldUseBottomToolbar) {
+            onDispose {
+                hostView.rootView
+                    ?.findViewById<View>(android.R.id.content)
+                    ?.setTag(R.id.composable_toolbar, null)
+            }
+        }
+
+        val topBarModifier =
+            if (!shouldUseBottomToolbar) {
+                Modifier.fillMaxWidth().onGloballyPositioned { coordinates ->
+                    if (coordinates.isAttached && hostView.isAttachedToWindow) {
+                        val contentRoot =
+                            hostView.rootView?.findViewById<View>(android.R.id.content)
+                                ?: return@onGloballyPositioned
+                        val windowLocation = IntArray(2)
+                        hostView.rootView.getLocationOnScreen(windowLocation)
+                        val bottomOnScreen =
+                            windowLocation[1] + coordinates.boundsInWindow().bottom.toInt()
+                        if (bottomOnScreen > 0) {
+                            contentRoot.setTag(R.id.composable_toolbar, bottomOnScreen)
+                        }
+                    }
+                }
+            } else {
+                Modifier.fillMaxWidth()
+            }
 
         Column(
             modifier =
@@ -174,7 +208,7 @@ internal class HomeToolbarComposable(
                 searchSuggestionsContent(Modifier.weight(1f))
             }
 
-            TopDividerColumn(showDivider = isTabStripAtBottom, modifier = Modifier.fillMaxWidth()) {
+            TopDividerColumn(showDivider = isTabStripAtBottom, modifier = topBarModifier) {
                 if (shouldShowTabStrip) {
                     tabStripContent()
                 }

@@ -11,12 +11,13 @@ import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -51,7 +52,7 @@ import org.mozilla.fenix.R
 import org.mozilla.fenix.compose.Image
 import org.mozilla.fenix.theme.FirefoxTheme
 
-private val BUTTON_HEIGHT = 56.dp
+private val BUTTON_HEIGHT = 48.dp
 private val AVATAR_SIZE = 24.dp
 
 @SuppressWarnings("LongMethod")
@@ -97,9 +98,9 @@ internal fun MozillaAccountMenuItem(
                     role = Role.Button
                     this.contentDescription = contentDescription
                 }
-                .wrapContentSize()
-                .clip(MaterialTheme.shapes.extraSmall)
-                .background(color = MaterialTheme.colorScheme.surfaceBright)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(6.dp))
+                .background(color = Color.Transparent)
                 .height(IntrinsicSize.Min)
                 .defaultMinSize(minHeight = BUTTON_HEIGHT)
                 .clickable { onClick() }

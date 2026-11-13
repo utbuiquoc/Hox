@@ -62,7 +62,11 @@ class AboutHomeBinding(
                 }
 
                 when (currentDestinationId) {
-                    R.id.browserFragment,
+                    R.id.browserFragment -> {
+                        if (!navController.popBackStack(R.id.homeFragment, false)) {
+                            navController.navigate(NavGraphDirections.actionGlobalHome())
+                        }
+                    }
                     R.id.menuFragment,
                     R.id.menuDialogFragment -> navController.navigate(NavGraphDirections.actionGlobalHome())
                     R.id.homeFragment -> Unit
@@ -83,7 +87,9 @@ class AboutHomeBinding(
                                 browserStore.state.selectedTab?.content?.url == ABOUT_HOME_URL
                         ) {
                             hasPendingHomepageNavigation = false
-                            navController.navigate(NavGraphDirections.actionGlobalHome())
+                            if (!navController.popBackStack(R.id.homeFragment, false)) {
+                                navController.navigate(NavGraphDirections.actionGlobalHome())
+                            }
                         }
                     }
                 }

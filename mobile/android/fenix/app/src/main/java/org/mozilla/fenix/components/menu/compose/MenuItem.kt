@@ -19,11 +19,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentHeight
-import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -62,9 +63,9 @@ import org.mozilla.fenix.compose.list.TextListItem
 import org.mozilla.fenix.theme.FirefoxTheme
 import org.mozilla.fenix.utils.DURATION_MS_MAIN_MENU_ITEM
 
-private val MENU_ITEM_HEIGHT_WITHOUT_DESC = 52.dp
+private val MENU_ITEM_HEIGHT_WITHOUT_DESC = 40.dp
 
-private val MENU_ITEM_HEIGHT_WITH_DESC = 56.dp
+private val MENU_ITEM_HEIGHT_WITH_DESC = 48.dp
 
 /**
  * An [IconListItem] wrapper for menu items in a [MenuGroup] with an optional icon at the end.
@@ -147,9 +148,9 @@ internal fun MenuItem(
                         }
                     }
                 }
-                .wrapContentSize()
-                .clip(shape = MaterialTheme.shapes.extraSmall)
-                .background(color = MaterialTheme.colorScheme.surfaceBright),
+                .fillMaxWidth()
+                .clip(shape = RoundedCornerShape(6.dp))
+                .background(color = Color.Transparent),
         labelModifier = labelModifier,
         colors =
             ListItemDefaults.colors(
@@ -215,8 +216,9 @@ internal fun MenuTextItem(
             },
         modifier =
             modifier
-                .clip(shape = MaterialTheme.shapes.extraSmall)
-                .background(color = MaterialTheme.colorScheme.surfaceBright),
+                .fillMaxWidth()
+                .clip(shape = RoundedCornerShape(6.dp))
+                .background(color = Color.Transparent),
         iconPainter = iconPainter,
         onClick = onClick,
     )
@@ -270,9 +272,9 @@ internal fun WebExtensionMenuItem(
                         )
                     testTagsAsResourceId = true
                 }
-                .wrapContentSize()
-                .clip(shape = MaterialTheme.shapes.extraSmall)
-                .background(color = MaterialTheme.colorScheme.surfaceBright),
+                .fillMaxWidth()
+                .clip(shape = RoundedCornerShape(6.dp))
+                .background(color = Color.Transparent),
         afterListAction = {
             Row(
                 modifier = Modifier.padding(start = 16.dp),
@@ -335,8 +337,9 @@ internal fun MenuBadgeItem(
                 }
                 .thenConditional(Modifier.semantics { disabled() }) { !enabled }
                 .semantics { disabled() }
-                .clip(shape = MaterialTheme.shapes.extraSmall)
-                .background(color = MaterialTheme.colorScheme.surfaceBright)
+                .fillMaxWidth()
+                .clip(shape = RoundedCornerShape(6.dp))
+                .background(color = Color.Transparent)
                 .padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,

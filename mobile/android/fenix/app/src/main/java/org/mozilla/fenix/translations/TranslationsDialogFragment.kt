@@ -6,22 +6,26 @@ package org.mozilla.fenix.translations
 
 import android.app.Dialog
 import android.content.DialogInterface
+import android.content.res.Configuration
 import android.os.Bundle
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.dp
 import androidx.fragment.compose.content
 import androidx.navigation.fragment.findNavController
 import androidx.navigation.fragment.navArgs
-import com.google.android.material.R as materialR
-import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import mozilla.components.browser.state.selector.findCustomTab
 import mozilla.components.browser.state.selector.findTabOrCustomTabOrSelectedTab
@@ -35,10 +39,13 @@ import org.mozilla.fenix.GleanMetrics.Translations
 import org.mozilla.fenix.R
 import org.mozilla.fenix.components.AppStore
 import org.mozilla.fenix.components.appstate.AppAction
+import org.mozilla.fenix.components.menu.compose.DESKTOP_PANEL_WIDTH_DP
+import org.mozilla.fenix.components.menu.compose.calculateDesktopDropdownMaxHeight
+import org.mozilla.fenix.components.menu.compose.configureAsDesktopDropdown
+import org.mozilla.fenix.components.menu.compose.updateDesktopDropdownLayout
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.openToBrowser
 import org.mozilla.fenix.ext.requireComponents
-import org.mozilla.fenix.ext.runIfFragmentIsAttached
 import org.mozilla.fenix.nimbus.FxNimbus
 import org.mozilla.fenix.settings.SupportUtils
 import org.mozilla.fenix.theme.FirefoxTheme
@@ -65,25 +72,26 @@ class TranslationsDialogFragment : BottomSheetDialogFragment() {
 
     private lateinit var translationsDialogStore: TranslationsDialogStore
 
-    private var behavior: BottomSheetBehavior<View>? = null
     private var isTranslationInProgress: Boolean? = null
     private var isDataSaverEnabledAndWifiDisabled = false
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog =
         super.onCreateDialog(savedInstanceState).apply {
-            setOnShowListener {
-                runIfFragmentIsAttached {
-                    val bottomSheet = findViewById<View?>(materialR.id.design_bottom_sheet)
-                    bottomSheet?.let {
-                        it.setBackgroundResource(android.R.color.transparent)
-                        behavior = BottomSheetBehavior.from(it)
-                        behavior?.peekHeight = resources.displayMetrics.heightPixels
-                        behavior?.state = BottomSheetBehavior.STATE_EXPANDED
-                        behavior?.skipCollapsed = true
-                    }
-                }
-            }
+            configureAsDesktopDropdown(
+                fragment = this@TranslationsDialogFragment,
+                gravity = Gravity.TOP or Gravity.END,
+                widthDp = DESKTOP_PANEL_WIDTH_DP,
+            )
         }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        dialog?.updateDesktopDropdownLayout(
+            fragment = this,
+            gravity = Gravity.TOP or Gravity.END,
+            widthDp = DESKTOP_PANEL_WIDTH_DP,
+        )
+    }
 
     @Suppress("LongMethod", "CognitiveComplexMethod")
     override fun onCreateView(
@@ -130,7 +138,10 @@ class TranslationsDialogFragment : BottomSheetDialogFragment() {
                     mutableStateOf(false)
                 }
                 TranslationDialogBottomSheet(
-                    onRequestDismiss = { behavior?.state = BottomSheetBehavior.STATE_HIDDEN }
+                    onRequestDismiss = { dismiss() },
+                    modifier =
+                        Modifier.padding(top = 4.dp, bottom = 8.dp)
+                            .heightIn(max = calculateDesktopDropdownMaxHeight()),
                 ) {
                     TranslationsAnimation(showMainSheet = translationsVisibility) { showMainPage ->
                         if (showMainPage) {

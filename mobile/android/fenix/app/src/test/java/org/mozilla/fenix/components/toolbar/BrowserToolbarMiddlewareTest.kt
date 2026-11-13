@@ -542,7 +542,7 @@ class BrowserToolbarMiddlewareTest {
         val newTabButton = toolbarStore.state.displayState.browserActionsEnd[0] as ActionButtonRes
         toolbarStore.dispatch(newTabButton.onClick as BrowserToolbarEvent)
 
-        verify { useCases.fenixBrowserUseCases.addNewHomepageTab(false) }
+        verify { useCases.fenixBrowserUseCases.addNewHomepageTab(private = false, startLoading = false) }
     }
 
     @Test

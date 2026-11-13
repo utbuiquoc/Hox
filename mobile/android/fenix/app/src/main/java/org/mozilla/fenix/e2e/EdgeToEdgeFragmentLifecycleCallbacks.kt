@@ -10,7 +10,10 @@ import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import android.view.Window
+import android.view.WindowManager
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat.enableEdgeToEdge
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.doOnAttach
 import androidx.core.view.isEmpty
 import androidx.fragment.app.DialogFragment
@@ -52,15 +55,35 @@ class EdgeToEdgeFragmentLifecycleCallbacks : FragmentLifecycleCallbacks() {
     }
 
     private fun setEdgeToEdgeStrategy(fragment: Fragment) {
-        fragment.requireActivity().window.apply {
-            // Change the edge-to-edge behavior immediately after the new fragment is attached
-            // to ensure an immediate change.
-            fragment.view?.doOnAttach {
-                when (fragment is SystemInsetsPaddedFragment) {
-                    true -> setupPersistentInsets()
-                    else -> clearPersistentInsets()
+        val window = fragment.requireActivity().window
+        val applyInsetsStrategy = {
+            when (fragment is SystemInsetsPaddedFragment) {
+                true -> {
+                    window.setupPersistentInsets()
+                    val rootView = window.decorView.findViewById<View>(android.R.id.content)
+                    if (rootView != null) {
+                        val isLayoutNoLimits =
+                            (window.attributes.flags and WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS) != 0
+                        if (isLayoutNoLimits) {
+                            rootView.setPadding(0, 0, 0, 0)
+                        } else {
+                            val persistentInsetsTypes =
+                                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+                            ViewCompat.getRootWindowInsets(rootView)
+                                ?.getInsets(persistentInsetsTypes)
+                                ?.let { insets ->
+                                    rootView.setPadding(insets.left, insets.top, insets.right, insets.bottom)
+                                }
+                        }
+                    }
                 }
+                else -> window.clearPersistentInsets()
             }
+        }
+
+        applyInsetsStrategy()
+        fragment.view?.doOnAttach {
+            applyInsetsStrategy()
         }
     }
 

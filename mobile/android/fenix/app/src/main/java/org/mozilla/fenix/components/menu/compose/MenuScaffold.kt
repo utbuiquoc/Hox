@@ -9,14 +9,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,24 +37,15 @@ internal fun MenuScaffold(
     Column(modifier = modifier) {
         header()
 
-        Row(modifier = Modifier.verticalScroll(rememberScrollState()).fillMaxWidth()) {
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-
         if (scrollState.canScrollBackward) {
-            HorizontalDivider()
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
 
         Column(
             modifier =
                 Modifier.verticalScroll(scrollState)
-                    .padding(
-                        start = 16.dp,
-                        top = 12.dp,
-                        end = 16.dp,
-                        bottom = 32.dp,
-                    ),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             content()
         }
@@ -89,7 +77,7 @@ internal fun MenuFrame(
 
             Column(
                 modifier = Modifier.verticalScroll(scrollState).then(contentModifier),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 content()
             }

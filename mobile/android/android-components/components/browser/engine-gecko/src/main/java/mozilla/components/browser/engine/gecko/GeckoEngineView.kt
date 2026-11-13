@@ -143,6 +143,7 @@ constructor(
 
             try {
                 geckoView.setSession(internalSession.geckoSession)
+                internalSession.geckoSession.setActive(true)
                 attachSelectionActionDelegate(internalSession.geckoSession)
                 verticalScrollListener.observe(internalSession.geckoSession)
             } catch (e: IllegalStateException) {

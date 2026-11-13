@@ -4,6 +4,7 @@
 
 package org.mozilla.fenix.share
 
+import android.graphics.drawable.GradientDrawable
 import android.net.ConnectivityManager
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -12,7 +13,11 @@ import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatDialogFragment
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.getSystemService
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat.Type.systemBars
+import androidx.core.view.updateLayoutParams
 import androidx.fragment.app.clearFragmentResult
 import androidx.fragment.app.setFragmentResult
 import androidx.fragment.app.viewModels
@@ -21,6 +26,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.navigation.fragment.navArgs
+import com.google.android.material.R as materialR
 import kotlinx.coroutines.launch
 import mozilla.components.browser.state.action.ContentAction
 import mozilla.components.browser.state.selector.findTabOrCustomTab
@@ -28,8 +34,16 @@ import mozilla.components.concept.base.crash.Breadcrumb
 import mozilla.components.concept.engine.prompt.PromptRequest
 import mozilla.components.feature.accounts.push.SendTabUseCases
 import mozilla.components.feature.share.RecentAppsStorage
+import mozilla.components.support.ktx.android.content.getColorFromAttr
+import mozilla.components.support.ktx.android.util.dpToPx
 import mozilla.components.support.utils.ext.packageManagerCompatHelper
 import org.mozilla.fenix.R
+import org.mozilla.fenix.components.menu.compose.DESKTOP_DROPDOWN_CORNER_DP
+import org.mozilla.fenix.components.menu.compose.DESKTOP_DROPDOWN_HORIZONTAL_MARGIN_DP
+import org.mozilla.fenix.components.menu.compose.DESKTOP_DROPDOWN_VERTICAL_MARGIN_DP
+import org.mozilla.fenix.components.menu.compose.animateDesktopDropdownIn
+import org.mozilla.fenix.components.menu.compose.applyDesktopDropdownWindowAppearance
+import org.mozilla.fenix.components.menu.compose.resolveDropdownTopMarginPx
 import org.mozilla.fenix.databinding.FragmentShareBinding
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.requireComponents
@@ -163,6 +177,9 @@ class ShareFragment : AppCompatDialogFragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        val binding = FragmentShareBinding.bind(view)
+        dialog?.applyDesktopDropdownWindowAppearance()
+        configureShareDropdownLayout(binding)
         viewModel.initDataLoad()
 
         viewLifecycleOwner.lifecycleScope.launch {
@@ -213,7 +230,46 @@ class ShareFragment : AppCompatDialogFragment() {
         }
     }
 
+    private fun configureShareDropdownLayout(binding: FragmentShareBinding) {
+        val metrics = resources.displayMetrics
+        val horizontalMarginPx = DESKTOP_DROPDOWN_HORIZONTAL_MARGIN_DP.dpToPx(metrics)
+        val verticalMarginPx = DESKTOP_DROPDOWN_VERTICAL_MARGIN_DP.dpToPx(metrics)
+        val maxPanelWidthPx = SHARE_DROPDOWN_WIDTH_DP.dpToPx(metrics)
+        val panelWidthPx = (metrics.widthPixels - 2 * horizontalMarginPx).coerceAtMost(maxPanelWidthPx)
+
+        val cornerRadiusPx = DESKTOP_DROPDOWN_CORNER_DP.dpToPx(metrics).toFloat()
+        val borderWidthPx = SHARE_DROPDOWN_BORDER_DP.dpToPx(metrics)
+        binding.sharingLayout.background =
+            GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = cornerRadiusPx
+                setColor(requireContext().getColorFromAttr(materialR.attr.colorSurface))
+                setStroke(borderWidthPx, requireContext().getColorFromAttr(materialR.attr.colorOutlineVariant))
+            }
+        binding.sharingLayout.elevation = 0f
+        binding.sharingLayout.clipToOutline = true
+
+        fun applyMargins(topInset: Int) {
+            val topMargin = resolveDropdownTopMarginPx(topInset)
+            val maxHeight = (metrics.heightPixels - topMargin - verticalMarginPx).coerceAtLeast(0)
+            binding.sharingLayout.updateLayoutParams<ConstraintLayout.LayoutParams> {
+                width = panelWidthPx
+                this.topMargin = topMargin
+                matchConstraintMaxHeight = maxHeight
+            }
+        }
+
+        ViewCompat.setOnApplyWindowInsetsListener(binding.shareWrapper) { _, insets ->
+            applyMargins(insets.getInsets(systemBars()).top)
+            insets
+        }
+        applyMargins(0)
+        animateDesktopDropdownIn(binding.sharingLayout)
+    }
+
     companion object {
+        private const val SHARE_DROPDOWN_WIDTH_DP = 360
+        private const val SHARE_DROPDOWN_BORDER_DP = 1
         const val SHOW_PAGE_ALPHA = 0.6f
         const val RESULT_KEY = "shareFragmentResultKey"
     }

@@ -9,14 +9,12 @@ import android.app.Dialog
 import android.app.PendingIntent
 import android.content.Intent
 import android.content.res.Configuration
-import android.graphics.Color
-import android.os.Build
 import android.os.Bundle
+import android.view.Gravity
 import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.view.animation.OvershootInterpolator
 import androidx.activity.compose.BackHandler
 import androidx.annotation.VisibleForTesting
 import androidx.compose.animation.AnimatedContent
@@ -25,9 +23,8 @@ import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CornerSize
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.collectAsState
@@ -39,18 +36,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.core.graphics.drawable.toDrawable
 import androidx.core.net.toUri
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat.Type.systemBars
 import androidx.fragment.compose.content
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.fragment.findNavController
 import androidx.navigation.fragment.navArgs
-import com.google.android.material.R as materialR
-import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import kotlinx.coroutines.Dispatchers
@@ -71,10 +63,6 @@ import mozilla.components.service.fxa.manager.AccountState.NotAuthenticated
 import mozilla.components.support.base.feature.ViewBoundFeatureWrapper
 import mozilla.components.support.base.log.logger.Logger
 import mozilla.components.support.ktx.android.util.dpToPx
-import mozilla.components.support.utils.ext.getWindowInsets
-import mozilla.components.support.utils.ext.isLandscape
-import mozilla.components.support.utils.ext.pixelSizeFor
-import mozilla.components.support.utils.ext.top
 import mozilla.telemetry.glean.private.NoExtras
 import org.mozilla.fenix.GleanMetrics.Events
 import org.mozilla.fenix.GleanMetrics.Vpn
@@ -86,10 +74,15 @@ import org.mozilla.fenix.components.components
 import org.mozilla.fenix.components.menu.compose.Addons
 import org.mozilla.fenix.components.menu.compose.CustomTabAddons
 import org.mozilla.fenix.components.menu.compose.CustomTabMenu
+import org.mozilla.fenix.components.menu.compose.DESKTOP_DROPDOWN_CORNER_DP
+import org.mozilla.fenix.components.menu.compose.DESKTOP_DROPDOWN_WIDTH_DP
 import org.mozilla.fenix.components.menu.compose.MainMenu
 import org.mozilla.fenix.components.menu.compose.MenuDialogBottomSheet
 import org.mozilla.fenix.components.menu.compose.MenuHandleState
 import org.mozilla.fenix.components.menu.compose.MoreSettingsSubmenu
+import org.mozilla.fenix.components.menu.compose.calculateDesktopDropdownMaxHeight
+import org.mozilla.fenix.components.menu.compose.configureAsDesktopDropdown
+import org.mozilla.fenix.components.menu.compose.updateDesktopDropdownLayout
 import org.mozilla.fenix.components.menu.middleware.MenuDialogMiddleware
 import org.mozilla.fenix.components.menu.middleware.MenuNavigationMiddleware
 import org.mozilla.fenix.components.menu.middleware.MenuTelemetryMiddleware
@@ -133,14 +126,8 @@ import org.mozilla.fenix.utils.exitSubmenu
 import org.mozilla.fenix.webcompat.DefaultWebCompatReporterMoreInfoSender
 import org.mozilla.fenix.webcompat.middleware.DefaultWebCompatReporterRetrievalService
 
-private const val EXPANDED_OFFSET = 56
-private const val HIDING_FRICTION = 0.9f
-private const val PRIVATE_HOME_MENU_BACKGROUND_ALPHA = 100
-
-private object MenuAnimationConfig {
-    const val DURATION = 300L
-    const val START_OFFSET_RATIO = 0.2f
-}
+private const val DROPDOWN_ELEVATION_DP = 0
+private const val DROPDOWN_VERTICAL_PADDING_DP = 6
 
 /** A bottom sheet fragment displaying the menu dialog. */
 @Suppress("LargeClass")
@@ -151,7 +138,6 @@ class MenuDialogFragment : BottomSheetDialogFragment() {
     private val ipProtectionMenuBinding = ViewBoundFeatureWrapper<IPProtectionMenuBinding>()
     private val ipProtectionSnackbarBinding = ViewBoundFeatureWrapper<IPProtectionSnackbarBinding>()
     private val snackbarHostState = SnackbarHostState()
-    private var bottomSheetBehavior: BottomSheetBehavior<View>? = null
     private var isPrivate: Boolean = false
     private val browserStore by lazy { requireComponents.core.store }
     private lateinit var menuStore: MenuStore
@@ -198,62 +184,25 @@ class MenuDialogFragment : BottomSheetDialogFragment() {
                 }
             }
             .apply {
-                setOnShowListener {
-                    val safeActivity = activity ?: return@setOnShowListener
-                    val appStore = safeActivity.components.appStore
-                    isPrivate = appStore.state.mode.isPrivate
-
-                    if (isPrivate && args.accesspoint == MenuAccessPoint.Home) {
-                        window?.setBackgroundDrawable(
-                            Color.BLACK.toDrawable().mutate().apply {
-                                alpha = PRIVATE_HOME_MENU_BACKGROUND_ALPHA
-                            }
-                        )
-                    }
-
-                    val bottomSheet = findViewById<View?>(materialR.id.design_bottom_sheet)
-                    bottomSheet?.let {
-                        ViewCompat.setOnApplyWindowInsetsListener(it) { view, insets ->
-                            val systemBarInsets = insets.getInsets(systemBars())
-                            view.setPadding(0, systemBarInsets.top, 0, systemBarInsets.bottom)
-                            insets
-                        }
-                    }
-                    bottomSheet?.setBackgroundResource(R.drawable.bottom_sheet_with_top_rounded_corners)
-
-                    // https://bugzilla.mozilla.org/show_bug.cgi?id=1982004
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-                        bottomSheet?.let { sheet ->
-                            sheet.translationY = sheet.height * MenuAnimationConfig.START_OFFSET_RATIO
-                            sheet
-                                .animate()
-                                .translationY(0f)
-                                .setInterpolator(OvershootInterpolator())
-                                .setDuration(MenuAnimationConfig.DURATION)
-                                .start()
-                        }
-                    }
-
-                    bottomSheetBehavior = bottomSheet?.let {
-                        BottomSheetBehavior.from(it).apply {
-                            maxWidth = calculateMenuSheetWidth()
-                            peekHeight = resources.displayMetrics.heightPixels
-                            maxHeight = calculateMenuSheetHeight()
-                            skipCollapsed = true
-                            state = BottomSheetBehavior.STATE_EXPANDED
-                            hideFriction = HIDING_FRICTION
-                        }
-                    }
-                }
+                configureAsDesktopDropdown(
+                    fragment = this@MenuDialogFragment,
+                    gravity = Gravity.TOP or Gravity.END,
+                    widthDp = DESKTOP_DROPDOWN_WIDTH_DP,
+                    onShowExtra = {
+                        val safeActivity = activity ?: return@configureAsDesktopDropdown
+                        isPrivate = safeActivity.components.appStore.state.mode.isPrivate
+                    },
+                )
             }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        bottomSheetBehavior?.apply {
-            maxWidth = calculateMenuSheetWidth()
-            maxHeight = calculateMenuSheetHeight()
-        }
+        dialog?.updateDesktopDropdownLayout(
+            fragment = this,
+            gravity = Gravity.TOP or Gravity.END,
+            widthDp = DESKTOP_DROPDOWN_WIDTH_DP,
+        )
     }
 
     @Suppress("LongMethod", "CyclomaticComplexMethod", "CognitiveComplexMethod")
@@ -300,23 +249,19 @@ class MenuDialogFragment : BottomSheetDialogFragment() {
                 TranslationsEnabledSettings.dataStore(requireContext()).isEnabled.collectAsState(true)
 
             MenuDialogBottomSheet(
-                modifier = Modifier.padding(top = 16.dp, bottom = 16.dp).width(32.dp),
+                modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
                 onRequestDismiss = ::dismiss,
                 menuHandleState =
                     MenuHandleState(
                         contentDescription = handlebarContentDescription,
-                        useDarkBackground =
-                            !settings.shouldUseBottomToolbar &&
-                                !settings.shouldUseExpandedToolbar &&
-                                (isExtensionsExpanded || isMoreMenuExpanded) &&
-                                args.accesspoint == MenuAccessPoint.Browser,
+                        visible = false,
                     ),
                 snackbarHostState = snackbarHostState,
-                cornerShape =
-                    MaterialTheme.shapes.extraLarge.copy(
-                        bottomStart = CornerSize(0.dp),
-                        bottomEnd = CornerSize(0.dp),
-                    ),
+                cornerShape = RoundedCornerShape(DESKTOP_DROPDOWN_CORNER_DP.dp),
+                maxHeight = calculateDesktopDropdownMaxHeight(),
+                borderColor = MaterialTheme.colorScheme.outlineVariant,
+                elevation = DROPDOWN_ELEVATION_DP.dp,
+                verticalPadding = DROPDOWN_VERTICAL_PADDING_DP.dp,
             ) {
                 val syncStore = components.backgroundServices.syncStore
                 val tabCollectionStorage = components.core.tabCollectionStorage
@@ -1158,35 +1103,5 @@ class MenuDialogFragment : BottomSheetDialogFragment() {
                 Intent(null, url.toUri()),
             )
         }
-    }
-
-    private fun calculateMenuSheetWidth(): Int {
-        val isLandscape = requireContext().isLandscape()
-        val screenWidthPx = requireContext().resources.configuration.screenWidthDp.dpToPx(resources.displayMetrics)
-        val totalHorizontalPadding = 2 * pixelSizeFor(R.dimen.browser_menu_padding)
-        val minScreenWidth = pixelSizeFor(R.dimen.browser_menu_max_width) + totalHorizontalPadding
-
-        // We only want to restrict the width of the menu if the device is in landscape mode AND the
-        // device's screen width is smaller than the menu's max width and total horizontal padding combined.
-        // Otherwise, the menu being at max width would still leave sufficient padding on each side in landscape mode.
-        return if (isLandscape && screenWidthPx < minScreenWidth) {
-            screenWidthPx - totalHorizontalPadding
-        } else {
-            pixelSizeFor(R.dimen.browser_menu_max_width)
-        }
-    }
-
-    private fun calculateMenuSheetHeight(): Int {
-        val bottomSheet = dialog?.findViewById<View?>(materialR.id.design_bottom_sheet)
-        val topBarHeight = bottomSheet?.getWindowInsets()?.top() ?: 0
-
-        val orientationMaxHeight =
-            if (requireContext().isLandscape()) {
-                resources.displayMetrics.heightPixels
-            } else {
-                resources.displayMetrics.heightPixels - EXPANDED_OFFSET.dpToPx(resources.displayMetrics)
-            }
-
-        return orientationMaxHeight - topBarHeight
     }
 }

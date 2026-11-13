@@ -4,34 +4,38 @@
 
 package org.mozilla.fenix.compose.navigation
 
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalBottomSheetProperties
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.scene.OverlayScene
 import androidx.navigation3.scene.Scene
 import androidx.navigation3.scene.SceneStrategy
 import androidx.navigation3.scene.SceneStrategyScope
-import kotlin.time.Duration.Companion.milliseconds
-import kotlinx.coroutines.delay
-import mozilla.components.compose.base.BottomSheetHandle
+import org.mozilla.fenix.components.menu.compose.DESKTOP_DROPDOWN_CORNER_DP
+import org.mozilla.fenix.components.menu.compose.applyDesktopDropdownWindowAppearance
 import org.mozilla.fenix.compose.BetaLabel
 import org.mozilla.fenix.compose.navigation.BottomSheetSceneStrategy.Companion.bottomSheet
 import org.mozilla.fenix.theme.FirefoxTheme
 
-private val firstOpenDelay = 25.milliseconds
+private const val DESKTOP_MODAL_MAX_WIDTH_DP = 400
 
-/** An [OverlayScene] that renders an [entry] within a [ModalBottomSheet]. */
+/** An [OverlayScene] that renders an [entry] within a desktop-style popup dialog. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Suppress("LongParameterList")
 internal class BottomSheetScene<T : Any>(
@@ -50,45 +54,42 @@ internal class BottomSheetScene<T : Any>(
     override val entries: List<NavEntry<T>> = listOf(entry)
 
     override val content: @Composable (() -> Unit) = {
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = skipPartiallyExpanded)
-
-        LaunchedEffect(Unit) {
-            if (fullyExpandOnFirstOpen) {
-                // There is a race condition with the sheet's initial animation and invoking `sheetState.expand()`.
-                // Wait a minor amount of time to invoke the full expansion.
-                delay(duration = firstOpenDelay)
-                sheetState.expand()
-            }
-        }
-
-        ModalBottomSheet(
+        Dialog(
             onDismissRequest = onBack,
-            properties = modalBottomSheetProperties,
-            sheetState = sheetState,
-            dragHandle = null,
-            containerColor = MaterialTheme.colorScheme.surface,
-            scrimColor = MaterialTheme.colorScheme.scrim,
+            properties =
+                DialogProperties(
+                    dismissOnBackPress = modalBottomSheetProperties.shouldDismissOnBackPress,
+                    usePlatformDefaultWidth = false,
+                ),
         ) {
-            Box(modifier = Modifier.fillMaxWidth()) {
-                if (showBetaLabel) {
-                    BetaLabel(
-                        modifier =
-                            Modifier.align(Alignment.TopStart)
-                                .padding(
+            val dialogWindow = (LocalView.current.parent as? DialogWindowProvider)?.window
+            SideEffect {
+                dialogWindow?.applyDesktopDropdownWindowAppearance()
+            }
+            Surface(
+                modifier =
+                    Modifier.fillMaxWidth()
+                        .padding(16.dp)
+                        .widthIn(max = DESKTOP_MODAL_MAX_WIDTH_DP.dp),
+                shape = RoundedCornerShape(DESKTOP_DROPDOWN_CORNER_DP.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                shadowElevation = 0.dp,
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    if (showBetaLabel) {
+                        BetaLabel(
+                            modifier =
+                                Modifier.padding(
                                     start = FirefoxTheme.layout.space.static200,
                                     top = FirefoxTheme.layout.space.static200,
                                 )
-                    )
+                        )
+                    }
+
+                    entry.Content()
                 }
-
-                BottomSheetHandle(
-                    onRequestDismiss = onBack,
-                    contentDescription = handleContentDescription,
-                    modifier = Modifier.align(Alignment.Center).padding(all = 16.dp),
-                )
             }
-
-            entry.Content()
         }
     }
 

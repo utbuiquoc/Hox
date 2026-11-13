@@ -62,6 +62,7 @@ class ExternalAppLinkStatusBindingTest {
                     appStore = appStore,
                     browserStore = browserStore,
                     mainDispatcher = testDispatcher,
+                    ioDispatcher = testDispatcher,
                 )
 
             binding.start()
@@ -95,6 +96,7 @@ class ExternalAppLinkStatusBindingTest {
                     appStore = appStore,
                     browserStore = browserStore,
                     mainDispatcher = testDispatcher,
+                    ioDispatcher = testDispatcher,
                 )
 
             binding.start()

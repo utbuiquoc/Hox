@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -43,43 +44,47 @@ internal fun SubmenuHeader(
     backButtonContentDescription: String? = null,
     onClick: () -> Unit,
 ) {
-    Row(
-        modifier =
-            Modifier.padding(start = 4.dp, end = 16.dp)
-                .defaultMinSize(minHeight = 56.dp)
-                .verticalScroll(rememberScrollState()),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
-            IconButton(
-                onClick = { onClick() },
-                contentDescription = backButtonContentDescription,
-            ) {
-                Icon(
-                    painter = painterResource(id = iconsR.drawable.mozac_ic_back_24),
-                    contentDescription = null,
-                )
-            }
-
-            Spacer(modifier = Modifier.width(4.dp))
-
-            Column {
-                Text(
-                    text = title.ifEmpty { url.tryGetHostFromUrl() },
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.semantics { heading() },
-                    style = FirefoxTheme.typography.headline7,
-                )
-                if (title.isNotEmpty()) {
-                    Text(
-                        text = url.tryGetHostFromUrl(),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = FirefoxTheme.typography.body2,
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier =
+                Modifier.padding(start = 4.dp, end = 12.dp, top = 2.dp, bottom = 2.dp)
+                    .defaultMinSize(minHeight = 40.dp)
+                    .verticalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
+                IconButton(
+                    onClick = { onClick() },
+                    contentDescription = backButtonContentDescription,
+                ) {
+                    Icon(
+                        painter = painterResource(id = iconsR.drawable.mozac_ic_back_24),
+                        contentDescription = null,
                     )
+                }
+
+                Spacer(modifier = Modifier.width(4.dp))
+
+                Column {
+                    Text(
+                        text = title.ifEmpty { url.tryGetHostFromUrl() },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.semantics { heading() },
+                        style = FirefoxTheme.typography.headline7,
+                    )
+                    if (title.isNotEmpty()) {
+                        Text(
+                            text = url.tryGetHostFromUrl(),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = FirefoxTheme.typography.body2,
+                        )
+                    }
                 }
             }
         }
+
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     }
 }
 

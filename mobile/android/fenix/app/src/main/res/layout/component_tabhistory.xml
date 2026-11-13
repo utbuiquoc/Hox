@@ -8,7 +8,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/tabHistoryWrapper"
     android:layout_width="match_parent"
-    android:layout_height="match_parent" >
+    android:layout_height="wrap_content" >
 
     <View
         android:id="@+id/handle"
@@ -16,6 +16,7 @@
         android:layout_height="@dimen/bottom_sheet_handle_height"
         android:layout_marginTop="@dimen/bottom_sheet_handle_top_margin"
         android:background="@drawable/bottom_sheet_handle_background"
+        android:visibility="gone"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
@@ -24,7 +25,9 @@
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/tabHistoryRecyclerView"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:paddingTop="19dp"
+        android:layout_height="wrap_content"
+        android:paddingTop="6dp"
+        android:paddingBottom="6dp"
+        app:layout_constraintTop_toTopOf="parent"
         tools:listitem="@layout/history_list_item" />
 </androidx.constraintlayout.widget.ConstraintLayout>

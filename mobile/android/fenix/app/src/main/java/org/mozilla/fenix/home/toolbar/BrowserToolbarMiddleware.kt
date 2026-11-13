@@ -192,6 +192,7 @@ class BrowserToolbarMiddleware(
                 next(action)
 
                 if (store.state.mode == Mode.DISPLAY) {
+                    updateStartPageActions(store, reconcileSelectedEngine())
                     observeSearchStateUpdates(store)
                 }
 
@@ -220,6 +221,7 @@ class BrowserToolbarMiddleware(
             is ExitEditMode -> {
                 next(action)
 
+                updateStartPageActions(store, reconcileSelectedEngine())
                 observeSearchStateUpdates(store)
             }
 

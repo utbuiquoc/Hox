@@ -412,7 +412,6 @@
     <fragment
         android:id="@+id/browserFragment"
         android:name="org.mozilla.fenix.browser.BrowserFragment"
-        app:exitAnim="@anim/fade_out"
         tools:layout="@layout/fragment_browser">
         <argument
             android:name="activeSessionId"

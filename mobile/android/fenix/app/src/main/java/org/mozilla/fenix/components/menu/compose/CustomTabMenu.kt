@@ -123,59 +123,9 @@ internal fun CustomTabMenu(
     onSummarizePageClick: () -> Unit,
 ) {
     MenuFrame(
-        contentModifier =
-            Modifier.padding(
-                start = 8.dp,
-                top = if (isBottomToolbar) 0.dp else 8.dp,
-                end = 8.dp,
-                bottom = if (isBottomToolbar) 84.dp else 16.dp,
-            ),
+        contentModifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
         scrollState = scrollState,
-        header = {
-            if (!isBottomToolbar) {
-                MenuNavigation(
-                    isSiteLoading = isSiteLoading,
-                    isExtensionsExpanded = false,
-                    isMoreMenuExpanded = false,
-                    onBackButtonClick = onBackButtonClick,
-                    onForwardButtonClick = onForwardButtonClick,
-                    onRefreshButtonClick = onRefreshButtonClick,
-                    onStopButtonClick = onStopButtonClick,
-                    onShareButtonClick = onShareButtonClick,
-                    goBackState = if (canGoBack) MenuItemState.ENABLED else MenuItemState.DISABLED,
-                    goForwardState = if (canGoForward) MenuItemState.ENABLED else MenuItemState.DISABLED,
-                )
-
-                if (scrollState.canScrollBackward) {
-                    HorizontalDivider()
-                }
-            }
-        },
-        footer = {
-            if (isBottomToolbar) {
-                if (scrollState.canScrollBackward) {
-                    HorizontalDivider()
-                }
-
-                MenuNavigation(
-                    isSiteLoading = isSiteLoading,
-                    isExtensionsExpanded = false,
-                    isMoreMenuExpanded = false,
-                    onBackButtonClick = onBackButtonClick,
-                    onForwardButtonClick = onForwardButtonClick,
-                    onRefreshButtonClick = onRefreshButtonClick,
-                    onStopButtonClick = onStopButtonClick,
-                    onShareButtonClick = onShareButtonClick,
-                    goBackState = if (canGoBack) MenuItemState.ENABLED else MenuItemState.DISABLED,
-                    goForwardState = if (canGoForward) MenuItemState.ENABLED else MenuItemState.DISABLED,
-                )
-            }
-        },
     ) {
-        if (isBottomToolbar) {
-            PoweredByFirefoxItem(modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
-        }
-
         MenuGroup {
             val badgeText: String
             val menuItemState: MenuItemState
@@ -278,6 +228,10 @@ internal fun CustomTabMenu(
         }
 
         if (!customTabMenuItems.isNullOrEmpty()) {
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+            )
             MenuGroup {
                 customTabMenuItems.forEach { customTabMenuItem ->
                     MenuTextItem(
@@ -288,9 +242,11 @@ internal fun CustomTabMenu(
             }
         }
 
-        if (!isBottomToolbar) {
-            PoweredByFirefoxItem(modifier = Modifier.padding(top = 4.dp))
-        }
+        HorizontalDivider(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+        )
+        PoweredByFirefoxItem(modifier = Modifier.padding(top = 4.dp, bottom = 2.dp))
     }
 }
 

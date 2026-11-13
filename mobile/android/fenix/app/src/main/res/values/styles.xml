@@ -795,6 +795,11 @@
         <item name="buttonTint">@color/compound_button_tint</item>
     </style>
 
+    <style name="DesktopDropdownWindowAnimation">
+        <item name="android:windowEnterAnimation">@anim/desktop_dropdown_enter</item>
+        <item name="android:windowExitAnimation">@anim/desktop_dropdown_exit</item>
+    </style>
+
    <!-- Style for the Tab Group flow that hides the dialog window in favor of a bottom sheet. -->
     <style name="TabGroupFlowDialogStyle" parent="Theme.MaterialComponents.DayNight.Dialog">
         <item name="android:windowIsFloating">false</item>

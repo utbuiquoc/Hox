@@ -52,7 +52,7 @@ class TabHistoryView(
                 }
             }
             .apply {
-                reverseLayout = true
+                reverseLayout = false
             }
 
     private var currentIndex: Int? = null

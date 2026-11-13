@@ -40,7 +40,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -136,8 +139,27 @@ fun TabStrip(
     val isPossiblyPrivateMode by remember {
         appStore.stateFlow.map { it.mode.isPrivate }
     }
-        .collectAsState(initial = false)
-    val state by remember {
+        .collectAsState(initial = appStore.state.mode.isPrivate)
+    val initialState = remember(isSelectDisabled, isPossiblyPrivateMode) {
+        browserStore.state.toTabStripState(
+            isSelectDisabled = isSelectDisabled,
+            isPossiblyPrivateMode = isPossiblyPrivateMode,
+            addTab = onAddTabClick,
+            closeTab = { isPrivate, numberOfTabs ->
+                browserStore.state.selectedTabId?.let { selectedTabId ->
+                    closeTab(
+                        numberOfTabs = numberOfTabs,
+                        isPrivate = isPrivate,
+                        tabsUseCases = tabsUseCases,
+                        tabId = selectedTabId,
+                        onLastTabClose = onLastTabClose,
+                        onCloseTabClick = onCloseTabClick,
+                    )
+                }
+            },
+        )
+    }
+    val state by remember(isSelectDisabled, isPossiblyPrivateMode) {
         browserStore.stateFlow.map {
             it.toTabStripState(
                 isSelectDisabled = isSelectDisabled,
@@ -158,7 +180,7 @@ fun TabStrip(
             )
         }
     }
-        .collectAsState(initial = TabStripState.initial)
+        .collectAsState(initial = initialState)
 
     val isKeyboardVisible =
         if (hideWhenKeyboardShown) {
@@ -225,8 +247,8 @@ private fun createSelectedTabClickHandler(
     tabsUseCases: TabsUseCases,
     onSelectedTabClick: (url: String) -> Unit,
 ): (tabId: String, url: String) -> Unit = { tabId, url ->
-    tabsUseCases.selectTab(tabId)
     onSelectedTabClick(url)
+    tabsUseCases.selectTab(tabId)
     TabStripMetrics.selectTab.record()
 }
 
@@ -358,12 +380,21 @@ private fun TabsList(
             }
         }
 
+        var previousLastTabId by remember { mutableStateOf(state.tabs.lastOrNull()?.id) }
+        var previousTabCount by remember { mutableIntStateOf(state.tabs.size) }
+        var isInitialSelection by remember { mutableStateOf(true) }
+
         if (state.tabs.isNotEmpty()) {
             // When a new tab is added, scroll to the end of the list. This is done here instead of
             // in onCloseTabClick so this acts on state change which can occur from any other
             // place e.g. tabs tray.
-            LaunchedEffect(state.tabs.last().id) {
-                listState.scrollToItem(state.tabs.size)
+            val currentLastTabId = state.tabs.last().id
+            LaunchedEffect(currentLastTabId, state.tabs.size) {
+                if (currentLastTabId != previousLastTabId && state.tabs.size > previousTabCount) {
+                    listState.scrollToItem(state.tabs.size)
+                }
+                previousLastTabId = currentLastTabId
+                previousTabCount = state.tabs.size
             }
 
             // When a tab is selected, scroll to the selected tab. This is done here instead of
@@ -372,12 +403,18 @@ private fun TabsList(
             val selectedTab = state.tabs.firstOrNull { it.isSelected }
             LaunchedEffect(selectedTab?.id) {
                 if (selectedTab != null) {
+                    val selectedIndex = state.tabs.indexOf(selectedTab)
                     val selectedItemInfo =
                         listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == selectedTab.id }
 
                     if (selectedItemInfo == null || listState.isItemPartiallyVisible(selectedItemInfo)) {
-                        listState.animateScrollToItem(state.tabs.indexOf(selectedTab))
+                        if (isInitialSelection) {
+                            listState.scrollToItem(selectedIndex)
+                        } else {
+                            listState.animateScrollToItem(selectedIndex)
+                        }
                     }
+                    isInitialSelection = false
                 }
             }
         }

@@ -28,7 +28,19 @@ class RecentTabsListFeature(
         // Listen for changes regarding the currently selected tab and in progress media tab.
         flow
             .map { it.asRecentTabs() }
-            .distinctUntilChanged()
+            .distinctUntilChanged { oldList, newList ->
+                oldList.size == newList.size &&
+                    oldList.zip(newList).all { (oldItem, newItem) ->
+                        oldItem is RecentTab.Tab &&
+                            newItem is RecentTab.Tab &&
+                            oldItem.state.id == newItem.state.id &&
+                            oldItem.state.content.url == newItem.state.content.url &&
+                            oldItem.state.content.title == newItem.state.content.title &&
+                            oldItem.state.content.icon === newItem.state.content.icon &&
+                            oldItem.state.lastMediaAccessState.mediaSessionActive ==
+                            newItem.state.lastMediaAccessState.mediaSessionActive
+                    }
+            }
             .collect {
                 appStore.dispatch(AppAction.RecentTabsChange(it))
             }
