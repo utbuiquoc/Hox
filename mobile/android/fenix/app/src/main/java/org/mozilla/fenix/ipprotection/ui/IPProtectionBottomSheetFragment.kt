@@ -26,7 +26,6 @@ import org.mozilla.fenix.ipprotection.store.IPProtectionPromptPreferencesMiddlew
 import org.mozilla.fenix.ipprotection.store.IPProtectionPromptState
 import org.mozilla.fenix.ipprotection.store.IPProtectionPromptState.PromptDetails
 import org.mozilla.fenix.ipprotection.store.IPProtectionPromptStore
-import org.mozilla.fenix.ipprotection.store.IPProtectionPromptTelemetryMiddleware
 import org.mozilla.fenix.ipprotection.store.Surface
 import org.mozilla.fenix.settings.SupportUtils
 import org.mozilla.fenix.theme.FirefoxTheme
@@ -47,7 +46,6 @@ class IPProtectionBottomSheetFragment : BottomSheetDialogFragment() {
                             IPProtectionPromptPreferencesMiddleware(
                                 repository = requireComponents.ipProtectionPromptRepository
                             ),
-                            IPProtectionPromptTelemetryMiddleware(),
                         ),
                 )
             }

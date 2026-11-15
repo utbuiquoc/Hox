@@ -140,6 +140,7 @@ import org.mozilla.fenix.components.NimbusComponents
 import org.mozilla.fenix.components.UseCases
 import org.mozilla.fenix.components.appstate.AppAction
 import org.mozilla.fenix.components.appstate.AppAction.CurrentTabClosed
+import org.mozilla.fenix.components.appstate.AppAction.SearchAction.SearchEnded
 import org.mozilla.fenix.components.appstate.AppAction.SearchAction.SearchStarted
 import org.mozilla.fenix.components.appstate.AppAction.SnackbarAction.SnackbarDismissed
 import org.mozilla.fenix.components.appstate.AppAction.URLCopiedToClipboard
@@ -730,6 +731,53 @@ class BrowserToolbarMiddlewareTest {
         assertEquals("", toolbarStore.state.editState.query.current)
         assertFalse(toolbarStore.state.editState.isQueryPrefilled)
     }
+
+    @Test
+    fun `GIVEN tablet interface and focus mode WHEN the page origin is clicked THEN start search in-place and prefill current URL`() {
+        settings.isTabStripEnabled = true
+        settings.showAddressBarInFocusMode = true
+        val currentTab = createTab("https://www.mozilla.org/en-US/")
+        val browserStore =
+            BrowserStore(
+                BrowserState(
+                    tabs = listOf(currentTab),
+                    selectedTabId = currentTab.id,
+                ),
+            )
+        val middleware = buildMiddleware(browserStore = browserStore)
+        val toolbarStore = buildStore(middleware)
+
+        toolbarStore.dispatch(toolbarStore.state.displayState.pageOrigin.onClick as BrowserToolbarAction)
+
+        verify(exactly = 0) { navController.navigate(any<NavDirections>()) }
+        verify { appStore.dispatch(SearchStarted(currentTab.id)) }
+        assertEquals("https://www.mozilla.org/en-US/", toolbarStore.state.editState.query.current)
+        assertTrue(toolbarStore.state.editState.isQueryPrefilled)
+    }
+
+    @Test
+    fun `GIVEN search is active WHEN a display action is clicked THEN SearchEnded is dispatched`() =
+        runTest(testDispatcher) {
+            appStore.dispatch(SearchStarted(tabId))
+            testDispatcher.scheduler.advanceUntilIdle()
+            val toolbarStore = buildStore()
+
+            toolbarStore.dispatch(RefreshClicked(bypassCache = false))
+
+            verify { appStore.dispatch(SearchEnded) }
+        }
+
+    @Test
+    fun `GIVEN search is active WHEN the tab counter is clicked THEN SearchEnded is dispatched`() =
+        runTest(testDispatcher) {
+            appStore.dispatch(SearchStarted(tabId))
+            testDispatcher.scheduler.advanceUntilIdle()
+            val toolbarStore = buildStore()
+
+            toolbarStore.dispatch(TabCounterClicked(Source.Unknown))
+
+            verify { appStore.dispatch(SearchEnded) }
+        }
 
     @Test
     fun `WHEN clicking on the URL THEN record telemetry`() {

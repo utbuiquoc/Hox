@@ -61,6 +61,7 @@ import org.mozilla.fenix.ext.TALL_SCREEN_HEIGHT_DP
 import org.mozilla.fenix.ext.WIDE_SCREEN_WIDTH_DP
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.getPreferenceKey
+import org.mozilla.fenix.ext.isLargeWindow
 import org.mozilla.fenix.home.pocket.ContentRecommendationsFeatureHelper
 import org.mozilla.fenix.home.topsites.FenixDefaultTopSitesProvider
 import org.mozilla.fenix.home.topsites.TopSitesConfigConstants.TOP_SITES_MAX_COUNT
@@ -2301,11 +2302,21 @@ class Settings(
                     (isTabStripEligible(appContext) || FxNimbus.features.tabStrip.value().allowOnAllDevices),
         )
 
-    var isDynamicToolbarEnabled by
+    private var isDynamicToolbarEnabledPref by
         booleanPreference(
             appContext.getPreferenceKey(R.string.pref_key_dynamic_toolbar),
             default = true,
         )
+
+    var isDynamicToolbarEnabled: Boolean
+        get() = if (isTabStripEnabled || appContext.isLargeScreenSize() || appContext.isLargeWindow()) {
+            false
+        } else {
+            isDynamicToolbarEnabledPref
+        }
+        set(value) {
+            isDynamicToolbarEnabledPref = value
+        }
 
     var useNewDynamicToolbarBehaviour by
         booleanPreference(

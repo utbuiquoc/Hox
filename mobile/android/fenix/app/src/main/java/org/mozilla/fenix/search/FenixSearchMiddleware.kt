@@ -55,6 +55,7 @@ import org.mozilla.fenix.browser.browsingmode.BrowsingModeManager
 import org.mozilla.fenix.components.AppStore
 import org.mozilla.fenix.components.NimbusComponents
 import org.mozilla.fenix.components.UseCases
+import org.mozilla.fenix.components.appstate.AppAction.SearchAction.SearchEnded
 import org.mozilla.fenix.components.appstate.AppAction.SearchAction.SearchEngineSelected
 import org.mozilla.fenix.components.appstate.AppAction.URLCopiedToClipboard
 import org.mozilla.fenix.components.metrics.MetricsUtils
@@ -65,6 +66,7 @@ import org.mozilla.fenix.components.search.TABS_SEARCH_ENGINE_ID
 import org.mozilla.fenix.components.share.ShareSource
 import org.mozilla.fenix.components.usecases.ShareUseCases
 import org.mozilla.fenix.ext.components
+import org.mozilla.fenix.ext.isTabletInterface
 import org.mozilla.fenix.ext.nav
 import org.mozilla.fenix.ext.telemetryName
 import org.mozilla.fenix.search.SearchFragmentAction.CopyCurrentWebsiteDetailsClicked
@@ -195,6 +197,7 @@ class FenixSearchMiddleware(
                     }
                 }
                 browserStore.dispatch(AwesomeBarAction.SuggestionClicked(suggestion))
+                appStore.dispatch(SearchEnded)
                 toolbarStore.dispatch(BrowserEditToolbarAction.SearchQueryUpdated(BrowserToolbarQuery("")))
                 suggestion.onSuggestionClicked?.invoke()
             }
@@ -295,8 +298,10 @@ class FenixSearchMiddleware(
             with(store.state) {
                 !isCurrentUrl(query, currentTabData?.url) && query.isNotBlank()
             }
+        val isTabletInterface = fragment.context?.isTabletInterface(settings) == true
         val shouldShowCurrentWebsiteDetails =
-            settings.showAddressBarInFocusMode &&
+            !isTabletInterface &&
+                settings.showAddressBarInFocusMode &&
                 query.isBlank() &&
                 appStore.state.searchState.sourceTabId?.let { browserStore.state.findTab(it) } != null
         val shouldShowSuggestions =
@@ -425,8 +430,11 @@ class FenixSearchMiddleware(
         object : SelectTabUseCase {
             override fun invoke(tabId: String) {
                 useCases.tabsUseCases.selectTab(tabId)
+                appStore.dispatch(SearchEnded)
 
-                navController.navigate(R.id.browserFragment)
+                if (navController.currentDestination?.id != R.id.browserFragment) {
+                    navController.navigate(R.id.browserFragment)
+                }
 
                 browserStore.dispatch(AwesomeBarAction.EngagementFinished(abandoned = false))
             }
@@ -441,7 +449,9 @@ class FenixSearchMiddleware(
         flags: LoadUrlFlags = LoadUrlFlags.none(),
         accessPoint: String = SearchAccessPoint.DEFAULT,
     ) {
-        navController.navigate(R.id.browserFragment)
+        if (navController.currentDestination?.id != R.id.browserFragment) {
+            navController.navigate(R.id.browserFragment)
+        }
         useCases.fenixBrowserUseCases.loadUrlOrSearch(
             searchTermOrURL = url,
             newTab = createNewTab,
@@ -558,7 +568,10 @@ class FenixSearchMiddleware(
     private fun handleReloadingCurrentWebsite() {
         appStore.state.searchState.sourceTabId?.let {
             useCases.tabsUseCases.selectTab(it)
-            navController.nav(navController.currentDestination?.id, NavGraphDirections.actionGlobalBrowser())
+            appStore.dispatch(SearchEnded)
+            if (navController.currentDestination?.id != R.id.browserFragment) {
+                navController.nav(navController.currentDestination?.id, NavGraphDirections.actionGlobalBrowser())
+            }
             useCases.sessionUseCases.reload(it)
             browserStore.dispatch(AwesomeBarAction.EngagementFinished(abandoned = true))
         }

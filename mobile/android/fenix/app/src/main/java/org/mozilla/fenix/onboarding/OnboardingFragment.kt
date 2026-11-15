@@ -28,7 +28,6 @@ import mozilla.components.service.nimbus.messaging.use
 import mozilla.components.support.base.feature.ViewBoundFeatureWrapper
 import mozilla.components.support.base.log.logger.Logger
 import mozilla.components.support.utils.Browsers
-import org.mozilla.fenix.GleanMetrics.Pings
 import org.mozilla.fenix.R
 import org.mozilla.fenix.components.accounts.FenixFxAEntryPoint
 import org.mozilla.fenix.components.appstate.AppAction
@@ -37,7 +36,6 @@ import org.mozilla.fenix.components.initializeGlean
 import org.mozilla.fenix.components.metrics.InstallReferrerHandlingService
 import org.mozilla.fenix.components.metrics.RtamoAttributionHandler
 import org.mozilla.fenix.components.metrics.installSourcePackage
-import org.mozilla.fenix.components.startMetricsIfEnabled
 import org.mozilla.fenix.ext.application
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.hideToolbar
@@ -320,21 +318,7 @@ class OnboardingFragment : Fragment() {
             )
         }
 
-        if (!settings.isTelemetryEnabled) {
-            Pings.onboardingOptOut.setEnabled(true)
-            Pings.onboardingOptOut.submit()
-        }
-
         rtamoAttributionHandler.handleReferrer(InstallReferrerHandlingService.response)
-
-        // The marketing telemetry may be enabled after finishing onboarding.
-        startMetricsIfEnabled(
-            logger = logger,
-            analytics = requireComponents.analytics,
-            isTelemetryEnabled = settings.isTelemetryEnabled,
-            isMarketingTelemetryEnabled = false,
-            isDailyUsagePingEnabled = settings.isDailyUsagePingEnabled,
-        )
     }
 
     private fun onFinish(onboardingPageUiData: OnboardingPageUiData?) {
@@ -350,15 +334,6 @@ class OnboardingFragment : Fragment() {
         }
 
         val settings = requireComponents.settings
-
-        // Telemetry and daily usage ping get enabled after ToU acceptance.
-        startMetricsIfEnabled(
-            logger = logger,
-            analytics = requireComponents.analytics,
-            isTelemetryEnabled = false,
-            isMarketingTelemetryEnabled = settings.isMarketingTelemetryEnabled,
-            isDailyUsagePingEnabled = false,
-        )
 
         findNavController()
             .nav(

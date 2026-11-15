@@ -97,7 +97,6 @@ class ListenToPage(
                             settings = settings,
                             scope = scope,
                         ),
-                        ListenToPageTelemetryMiddleware().also { it.register() },
                         thermalStatusMonitor()?.let { ListenThermalMiddleware(monitor = it) },
                     ),
             )

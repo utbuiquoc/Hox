@@ -188,7 +188,7 @@ class BackgroundServices(
     val accountAbnormalities = AccountAbnormalities(context, crashReporter, strictMode)
 
     val syncStore by lazy {
-        SyncStore(middleware = listOf(TelemetryMiddleware()))
+        SyncStore()
     }
 
     private lateinit var syncStoreSupport: SyncStoreSupport

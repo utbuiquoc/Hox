@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.PreviewLightDark
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import mozilla.components.compose.base.theme.AcornTheme
 import mozilla.components.compose.browser.toolbar.concept.PageOrigin
@@ -73,6 +74,9 @@ data class BrowserToolbarCFR(
  * @param browserActionsColor Optional `onSurface` color override applied only to the display toolbar's browser actions
  *   (outside the URL bounding box), leaving page actions unchanged.
  * @param showDivider Whether to show the divider on the edge of the toolbar facing the webpage.
+ * @param useDesktopEditToolbar Whether edit mode should keep surrounding browser actions visible and use desktop styling.
+ * @param onDesktopUrlPillBoundsChanged Callback reporting desktop URL box window bounds while in desktop edit mode.
+ * @param onDismissDesktopSearch Optional callback invoked when Escape is pressed in desktop edit mode.
  */
 @Composable
 fun BrowserToolbar(
@@ -81,6 +85,9 @@ fun BrowserToolbar(
     useMinimalBottomToolbarWhenEnteringText: Boolean = false,
     browserActionsColor: Color? = null,
     showDivider: Boolean = true,
+    useDesktopEditToolbar: Boolean = false,
+    onDesktopUrlPillBoundsChanged: ((IntRect) -> Unit)? = null,
+    onDismissDesktopSearch: (() -> Unit)? = null,
 ) {
     val uiState by store.observeAsComposableState { it }
     val cfrProperties = browserToolbarCFRProperties(uiState.gravity)
@@ -95,7 +102,7 @@ fun BrowserToolbar(
             usePrivateModeQueries = uiState.editState.isQueryPrivate,
             gravity = uiState.gravity,
             backgroundColor =
-                if (store.state.editState.query.current.isEmpty()) {
+                if (useDesktopEditToolbar || store.state.editState.query.current.isEmpty()) {
                     backgroundColor
                 } else {
                     MaterialTheme.colorScheme.surface
@@ -105,6 +112,12 @@ fun BrowserToolbar(
             suggestion = uiState.editState.suggestion,
             editActionsStart = uiState.editState.editActionsStart,
             editActionsEnd = uiState.editState.editActionsEnd,
+            useDesktopEditToolbar = useDesktopEditToolbar,
+            browserActionsStart = uiState.displayState.browserActionsStart,
+            browserActionsEnd = uiState.displayState.browserActionsEnd,
+            browserActionsColor = browserActionsColor,
+            onDesktopUrlPillBoundsChanged = onDesktopUrlPillBoundsChanged,
+            onDismissDesktopSearch = onDismissDesktopSearch,
             onUrlCommitted = { text -> store.dispatch(CommitUrl(text)) },
             onUrlEdit = { store.dispatch(SearchQueryUpdated(it)) },
             onInteraction = { store.dispatch(it) },

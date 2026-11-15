@@ -149,6 +149,7 @@ import org.mozilla.fenix.components.toolbar.TabCounterInteractions.TabCounterCli
 import org.mozilla.fenix.components.toolbar.TabCounterInteractions.TabCounterLongClicked
 import org.mozilla.fenix.components.usecases.ShareUseCases
 import org.mozilla.fenix.ext.canGoBackInHistoryOrToStories
+import org.mozilla.fenix.ext.isTabletInterface
 import org.mozilla.fenix.ext.nav
 import org.mozilla.fenix.ext.navigateSafe
 import org.mozilla.fenix.nimbus.FxNimbus
@@ -301,6 +302,13 @@ class BrowserToolbarMiddleware(
         next: (BrowserToolbarAction) -> Unit,
         action: BrowserToolbarAction,
     ) {
+        if (
+            (action is DisplayActions || action is TabCounterInteractions) &&
+            appStore.state.searchState.isSearchActive
+        ) {
+            appStore.dispatch(SearchEnded)
+        }
+
         when (action) {
             is Init -> {
                 next(action)
@@ -431,7 +439,19 @@ class BrowserToolbarMiddleware(
 
                 val selectedTab = browserStore.state.selectedTab ?: return
                 val searchTerms = selectedTab.content.searchTerms
-                if (searchTerms.isBlank()) {
+                if (uiContext.isTabletInterface(settings)) {
+                    val prefillText =
+                        when {
+                            searchTerms.isNotBlank() -> searchTerms
+                            selectedTab.content.url != ABOUT_HOME_URL ->
+                                URLStringUtils.toLosslessEditableUrl(selectedTab.content.url)
+                            else -> ""
+                        }
+                    if (prefillText.isNotEmpty()) {
+                        store.dispatch(SearchQueryUpdated(BrowserToolbarQuery(prefillText), true))
+                    }
+                    appStore.dispatch(SearchStarted(selectedTab.id))
+                } else if (searchTerms.isBlank()) {
                     navController.navigate(
                         BrowserFragmentDirections.actionGlobalHome(
                             focusOnAddressBar = true,

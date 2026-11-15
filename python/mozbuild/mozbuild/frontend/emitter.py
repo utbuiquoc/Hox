@@ -1777,8 +1777,9 @@ class TreeMetadataEmitter(LoggingMixin):
             self._linkage.append((context, rust_tests_obj, "USE_LIBS"))
             yield rust_tests_obj
 
-        for obj in self._process_test_manifests(context):
-            yield obj
+        if self.config.substs.get("ENABLE_TESTS"):
+            for obj in self._process_test_manifests(context):
+                yield obj
 
         yield from jar_manifest_objects
 

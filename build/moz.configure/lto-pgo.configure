@@ -368,6 +368,8 @@ def lto(
         else:
             cflags.append("-flto=thin")
             ldflags.append("-flto=thin")
+            ldflags.append("-Wl,--thinlto-cache-dir=/home/rua/.mozbuild/thinlto-cache")
+            ldflags.append("-Wl,--thinlto-cache-policy=cache_size_bytes=5g:cache_size_files=20000")
 
         if target.os == "Android" and "cross" in values:
             # Work around https://github.com/rust-lang/rust/issues/90088

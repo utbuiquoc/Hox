@@ -29,7 +29,6 @@ import org.mozilla.fenix.ipprotection.store.FenixIPProtectionEligibilityStorage
 import org.mozilla.fenix.ipprotection.store.IPProtectionPreferencesMiddleware
 import org.mozilla.fenix.ipprotection.store.IPProtectionSnackbarMessages
 import org.mozilla.fenix.ipprotection.store.IPProtectionSnackbarMiddleware
-import org.mozilla.fenix.ipprotection.store.IPProtectionTelemetryMiddleware
 import org.mozilla.fenix.utils.Settings
 
 /**
@@ -66,7 +65,6 @@ class IPProtection(
                         lazyAppStore = lazyAppStore,
                         messages = snackbarMessages,
                     ),
-                    IPProtectionTelemetryMiddleware(),
                     IPProtectionPreferencesMiddleware(ipProtectionRepository),
                     IPProtectionLocationMiddleware(repository = DefaultIPProtectionLocationRepository(context)),
                     engineMiddleware,

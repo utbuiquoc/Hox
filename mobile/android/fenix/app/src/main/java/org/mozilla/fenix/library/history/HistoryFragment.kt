@@ -112,11 +112,9 @@ import org.mozilla.fenix.ext.nav
 import org.mozilla.fenix.ext.requireComponents
 import org.mozilla.fenix.ext.runIfFragmentIsAttached
 import org.mozilla.fenix.ext.setTextColor
-import org.mozilla.fenix.home.toolbar.BrowserToolbarTelemetryMiddleware
 import org.mozilla.fenix.library.LibraryPageFragment
 import org.mozilla.fenix.library.history.HistoryFragmentAction.SearchClicked
 import org.mozilla.fenix.library.history.HistoryFragmentAction.SearchDismissed
-import org.mozilla.fenix.library.history.state.HistoryTelemetryMiddleware
 import org.mozilla.fenix.library.history.state.bindings.MenuBinding
 import org.mozilla.fenix.pbmlock.registerForVerification
 import org.mozilla.fenix.pbmlock.verifyUser
@@ -211,12 +209,7 @@ class HistoryFragment :
             fragmentStore(HistoryFragmentState.initial) {
                     HistoryFragmentStore(
                         initialState = it,
-                        middleware =
-                            listOf(
-                                HistoryTelemetryMiddleware(
-                                    isInPrivateMode = requireComponents.appStore.state.mode == BrowsingMode.Private
-                                )
-                            ),
+                        middleware = emptyList(),
                     )
                 }
                 .value
@@ -780,10 +773,6 @@ class HistoryFragment :
                             browsingModeManager = (requireActivity() as HomeActivity).browsingModeManager,
                             settings = requireComponents.settings,
                             scope = lifecycleScope,
-                        ),
-                        BrowserToolbarTelemetryMiddleware(
-                            appStore = requireComponents.appStore,
-                            settings = requireComponents.settings,
                         ),
                     ),
             )

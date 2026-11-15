@@ -29,7 +29,7 @@ import org.mozilla.fenix.nimbus.FxNimbus
  * an instance of [Client] used to upload metrics.
  */
 fun initializeGlean(applicationContext: Context, logger: Logger, isTelemetryUploadEnabled: Boolean, client: Client) {
-    logger.debug("Initializing Glean (uploadEnabled=$isTelemetryUploadEnabled})")
+    logger.debug("Initializing Glean (uploadEnabled=false, requested=$isTelemetryUploadEnabled)")
 
     // for performance reasons, this is only available in Nightly or Debug builds
     val customEndpoint =
@@ -66,7 +66,7 @@ fun initializeGlean(applicationContext: Context, logger: Logger, isTelemetryUplo
     Glean.initialize(
         applicationContext = applicationContext,
         configuration = configuration.setCustomEndpointIfAvailable(customEndpoint),
-        uploadEnabled = isTelemetryUploadEnabled,
+        uploadEnabled = false,
         buildInfo = GleanBuildInfo.buildInfo,
     )
 

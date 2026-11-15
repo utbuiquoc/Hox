@@ -21,17 +21,22 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.semantics.testTagsAsResourceId
+import androidx.compose.ui.unit.IntRect
 import androidx.navigation.NavController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -59,6 +64,8 @@ import org.mozilla.fenix.components.appstate.AppAction.SearchAction.SearchStarte
 import org.mozilla.fenix.components.appstate.VoiceSearchAction.VoiceInputRequested
 import org.mozilla.fenix.components.metrics.MetricsUtils
 import org.mozilla.fenix.components.toolbar.TopDividerColumn
+import org.mozilla.fenix.ext.isTabletInterface
+import org.mozilla.fenix.search.awesomebar.LocalDesktopUrlPillAnchorBounds
 import org.mozilla.fenix.theme.FirefoxTheme
 import org.mozilla.fenix.utils.Settings
 import org.mozilla.fenix.wallpapers.WallpaperTheme
@@ -119,7 +126,7 @@ internal class HomeToolbarComposable(
 
         BackInvokedHandler(isSearching) {
             val sourceTabId = appStore.state.searchState.sourceTabId
-            if (sourceTabId != null) {
+            if (sourceTabId != null && !context.isTabletInterface(settings)) {
                 navController.navigate(R.id.browserFragment)
             }
             appStore.dispatch(SearchEnded)
@@ -143,19 +150,22 @@ internal class HomeToolbarComposable(
                 }
                 .value
         val currentQuery = toolbarStore.observeAsComposableState { it.editState.query.current }.value
+        val effectiveSearching = isSearching && !context.isTabletInterface(settings)
         return homepageToolbarColors(
             isPrivateMode = browsingModeManager.mode.isPrivate,
             shouldUseEdgeToEdgeColors =
                 if (settings.enableHomepageTrendingRecentSearch) {
-                    !isSearching
+                    !effectiveSearching
                 } else {
-                    !isSearching || (currentQuery.isEmpty() && !queryWasPrefilled)
+                    !effectiveSearching || (currentQuery.isEmpty() && !queryWasPrefilled)
                 },
         )
     }
 
     @Composable
     private fun ToolbarContent(wallpaperTextColor: Color?) {
+        LocalConfiguration.current
+        val isDesktopSearch = context.isTabletInterface(settings)
         val shouldUseBottomToolbar = remember { settings.shouldUseBottomToolbar }
         val shouldShowTabStrip = remember {
             if (shouldUseBottomToolbar) {
@@ -166,7 +176,13 @@ internal class HomeToolbarComposable(
         }
         val isSearchActive = appStore.observeAsComposableState { it.searchState.isSearchActive }.value
         val isTabStripAtBottom =
-            remember { shouldUseBottomToolbar && settings.shouldShowTabStripAtBottom } && !isSearchActive
+            remember { shouldUseBottomToolbar && settings.shouldShowTabStripAtBottom } &&
+                (!isSearchActive || isDesktopSearch)
+        var desktopUrlPillBounds by remember { mutableStateOf<IntRect?>(null) }
+        val dismissDesktopSearch = {
+            appStore.dispatch(SearchEnded)
+            browserStore.dispatch(AwesomeBarAction.EngagementFinished(abandoned = true))
+        }
         val hostView = LocalView.current
 
         DisposableEffect(hostView, shouldUseBottomToolbar) {
@@ -197,42 +213,62 @@ internal class HomeToolbarComposable(
                 Modifier.fillMaxWidth()
             }
 
-        Column(
-            modifier =
-                Modifier.semantics {
-                    testTagsAsResourceId = true
-                    testTag = context.resources.getResourceName(R.id.composable_toolbar)
-                }
+        CompositionLocalProvider(
+            LocalDesktopUrlPillAnchorBounds provides
+                if (isSearchActive && isDesktopSearch) desktopUrlPillBounds else null
         ) {
-            if (shouldUseBottomToolbar) {
-                searchSuggestionsContent(Modifier.weight(1f))
-            }
-
-            TopDividerColumn(showDivider = isTabStripAtBottom, modifier = topBarModifier) {
-                if (shouldShowTabStrip) {
-                    tabStripContent()
-                }
-
-                AddressBar(wallpaperTextColor = wallpaperTextColor)
-
+            Column(
+                modifier =
+                    Modifier.semantics {
+                        testTagsAsResourceId = true
+                        testTag = context.resources.getResourceName(R.id.composable_toolbar)
+                    }
+            ) {
                 if (shouldUseBottomToolbar) {
-                    navigationBarContent?.invoke()
+                    searchSuggestionsContent(
+                        if (isDesktopSearch) Modifier else Modifier.weight(1f)
+                    )
                 }
-            }
 
-            if (!shouldUseBottomToolbar) {
-                searchSuggestionsContent(Modifier.weight(1f))
+                TopDividerColumn(showDivider = isTabStripAtBottom, modifier = topBarModifier) {
+                    if (shouldShowTabStrip) {
+                        tabStripContent()
+                    }
+
+                    AddressBar(
+                        wallpaperTextColor = wallpaperTextColor,
+                        isDesktopSearch = isDesktopSearch,
+                        onDesktopUrlPillBoundsChanged = { desktopUrlPillBounds = it },
+                        onDismissDesktopSearch = dismissDesktopSearch,
+                    )
+
+                    if (shouldUseBottomToolbar) {
+                        navigationBarContent?.invoke()
+                    }
+                }
+
+                if (!shouldUseBottomToolbar) {
+                    searchSuggestionsContent(
+                        if (isDesktopSearch) Modifier else Modifier.weight(1f)
+                    )
+                }
             }
         }
     }
 
     @Composable
-    private fun ColumnScope.AddressBar(wallpaperTextColor: Color?) {
+    private fun ColumnScope.AddressBar(
+        wallpaperTextColor: Color?,
+        isDesktopSearch: Boolean,
+        onDesktopUrlPillBoundsChanged: (IntRect) -> Unit,
+        onDismissDesktopSearch: () -> Unit,
+    ) {
         val isAddressBarVisible = remember { addressBarVisibility }
         val isSearchActive = appStore.observeAsComposableState { it.searchState.isSearchActive }.value
         val hasBottomStrip =
             settings.shouldUseBottomToolbar &&
-                ((settings.shouldShowTabStripAtBottom && !isSearchActive) || settings.shouldShowTabGroupsStrip)
+                ((settings.shouldShowTabStripAtBottom && (!isSearchActive || isDesktopSearch)) ||
+                    settings.shouldShowTabGroupsStrip)
 
         Box {
             if (settings.isHomepageMiddleSearchEnabled) {
@@ -262,6 +298,9 @@ internal class HomeToolbarComposable(
                     store = toolbarStore,
                     browserActionsColor = wallpaperTextColor,
                     showDivider = !hasBottomStrip,
+                    useDesktopEditToolbar = isDesktopSearch,
+                    onDesktopUrlPillBoundsChanged = onDesktopUrlPillBoundsChanged,
+                    onDismissDesktopSearch = onDismissDesktopSearch,
                 )
             }
         }
@@ -275,7 +314,8 @@ internal class HomeToolbarComposable(
     @Composable
     override fun searchBackgroundColor(): Color? {
         val isSearchActive = appStore.observeAsComposableState { it.searchState.isSearchActive }.value
-        return if (isSearchActive) toolbarColors(isSearching = true).surface else null
+        val isDesktopSearch = context.isTabletInterface(settings)
+        return if (isSearchActive && !isDesktopSearch) toolbarColors(isSearching = true).surface else null
     }
 
     override fun build(middleSearchEnabled: Boolean) {
@@ -319,9 +359,10 @@ internal class HomeToolbarComposable(
     }
 
     private fun handleTypedSearchRequest() {
-        handleStartingSearch(directToSearchConfig)
-
-        if (directToSearchConfig.sessionId != null && !settings.showAddressBarInFocusMode) {
+        if (
+            directToSearchConfig.sessionId != null &&
+                (!settings.showAddressBarInFocusMode || context.isTabletInterface(settings))
+        ) {
             browserStore.state.findTab(directToSearchConfig.sessionId)?.let {
                 toolbarStore.dispatch(
                     SearchQueryUpdated(
@@ -331,6 +372,7 @@ internal class HomeToolbarComposable(
                 )
             }
         }
+        handleStartingSearch(directToSearchConfig)
     }
 
     private fun handleStartingSearch(directToSearchConfig: DirectToSearchConfig) {

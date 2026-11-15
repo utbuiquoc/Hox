@@ -88,12 +88,9 @@ class ScrollAwareThumbnailFeature(
     }
 
     private fun onSelectedSessionChanged(newSession: EngineSession?) {
-        // Only capture the outgoing tab when we actually had one attached. On the first flow
-        // emission (or when the previous emission was null), there is no compositor content to
-        // capture — a request would produce a null bitmap and pollute the lastCaptured baseline.
-        if (observedSession != null) {
-            maybeCaptureThumbnail()
-        }
+        // Skip synchronous compositor readback during tab changes to avoid
+        // frame-pacing stalls on high-refresh-rate displays; onPause captures
+        // thumbnails when backgrounding the app.
         detachObserver()
         if (newSession != null) {
             attachObserver(newSession)

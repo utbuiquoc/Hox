@@ -72,6 +72,7 @@ import org.mozilla.fenix.browser.browsingmode.BrowsingMode.Private
 import org.mozilla.fenix.browser.browsingmode.BrowsingModeManager
 import org.mozilla.fenix.components.AppStore
 import org.mozilla.fenix.components.appstate.AppAction
+import org.mozilla.fenix.components.appstate.AppAction.SearchAction.SearchEnded
 import org.mozilla.fenix.components.appstate.AppAction.SearchAction.SearchStarted
 import org.mozilla.fenix.components.appstate.SupportedMenuNotifications
 import org.mozilla.fenix.components.appstate.VoiceSearchAction.VoiceInputRequested
@@ -187,6 +188,14 @@ class BrowserToolbarMiddleware(
         next: (BrowserToolbarAction) -> Unit,
         action: BrowserToolbarAction,
     ) {
+        if (
+            (action is DisplayActions || action is TabCounterInteractions || action is NavigationInteractions) &&
+            action !is VoiceSearchClicked &&
+            appStore.state.searchState.isSearchActive
+        ) {
+            appStore.dispatch(SearchEnded)
+        }
+
         when (action) {
             is Init -> {
                 next(action)

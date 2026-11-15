@@ -28,6 +28,7 @@ import mozilla.components.compose.browser.toolbar.store.ToolbarGravity.Top
 import mozilla.components.support.utils.KeyboardState
 import mozilla.components.support.utils.keyboardAsState
 import org.mozilla.fenix.R
+import org.mozilla.fenix.ext.isTabletInterface
 import org.mozilla.fenix.theme.FirefoxTheme
 import org.mozilla.fenix.utils.Settings
 
@@ -167,9 +168,12 @@ class BrowserNavigationBar(
     }
 
     private fun setNavbarDynamicBehavior(view: NavigationBarComposeView) {
-        if (settings.isDynamicToolbarEnabled) {
-            (view.layoutParams as LayoutParams).apply {
-                behavior = NavbarToolbarSyncBehavior(context)
+        val isTabletInterface = context.isTabletInterface(settings)
+        (view.layoutParams as? LayoutParams)?.apply {
+            behavior = if (settings.isDynamicToolbarEnabled && !settings.shouldUseFixedTopToolbar && !isTabletInterface) {
+                NavbarToolbarSyncBehavior(context)
+            } else {
+                null
             }
         }
     }

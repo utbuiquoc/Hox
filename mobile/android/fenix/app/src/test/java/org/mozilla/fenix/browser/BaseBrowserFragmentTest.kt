@@ -147,6 +147,28 @@ class BaseBrowserFragmentTest {
     }
 
     @Test
+    fun `initializeEngineView should setDynamicToolbarMaxHeight to 0 and set margins when tab strip is enabled`() {
+        every { settings.shouldUseFixedTopToolbar } returns false
+        every { settings.isDynamicToolbarEnabled } returns true
+        every { settings.isTabStripEnabled } returns true
+        val params = CoordinatorLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+        )
+        every { swipeRefreshLayout.layoutParams } returns params
+
+        fragment.initializeEngineView(
+            topToolbarHeight = 24,
+            bottomToolbarHeight = 12,
+        )
+
+        verify { engineView.setDynamicToolbarMaxHeight(0) }
+        assertNull(params.behavior)
+        kotlin.test.assertEquals(24, params.topMargin)
+        kotlin.test.assertEquals(12, params.bottomMargin)
+    }
+
+    @Test
     fun `initializeEngineView should set toolbar height as EngineView parent's bottom margin when using bottom toolbar`() {
         every { settings.isDynamicToolbarEnabled } returns false
         every { settings.shouldUseBottomToolbar } returns true

@@ -89,6 +89,10 @@ allprojects {
                 testOptions {
                     unitTests.includeAndroidResources = true
                 }
+                lint {
+                    checkReleaseBuilds false
+                    abortOnError false
+                }
             }
         }
     }

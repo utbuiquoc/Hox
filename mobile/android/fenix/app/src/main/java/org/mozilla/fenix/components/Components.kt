@@ -91,10 +91,8 @@ import org.mozilla.fenix.home.blocklist.BlocklistHandler
 import org.mozilla.fenix.home.blocklist.BlocklistMiddleware
 import org.mozilla.fenix.home.collections.migration.CollectionsMigrationRepository
 import org.mozilla.fenix.home.collections.migration.DefaultCollectionsMigrationRepository
-import org.mozilla.fenix.home.middleware.HomeTelemetryMiddleware
 import org.mozilla.fenix.home.setup.store.DefaultSetupChecklistRepository
 import org.mozilla.fenix.home.setup.store.SetupChecklistPreferencesMiddleware
-import org.mozilla.fenix.home.setup.store.SetupChecklistTelemetryMiddleware
 import org.mozilla.fenix.ipprotection.store.DefaultIPProtectionPromptRepository
 import org.mozilla.fenix.listentopage.ListenToPageAIControlFeature
 import org.mozilla.fenix.messaging.state.MessagingMiddleware
@@ -364,9 +362,7 @@ class Components(
                                 currentTimeInMillis = currentTimeMillis,
                             )
                         ),
-                        HomeTelemetryMiddleware(),
                         SetupChecklistPreferencesMiddleware(DefaultSetupChecklistRepository(context, settings)),
-                        SetupChecklistTelemetryMiddleware(),
                         ReviewPromptMiddleware(
                                 continuousOnboardingInProgress = {
                                     settings.continuousOnboardingFeatureEnabled &&

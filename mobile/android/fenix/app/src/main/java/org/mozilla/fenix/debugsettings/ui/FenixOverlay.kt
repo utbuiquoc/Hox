@@ -62,7 +62,6 @@ import org.mozilla.fenix.debugsettings.navigation.DebugDrawerRoute
 import org.mozilla.fenix.debugsettings.store.DebugDrawerAction
 import org.mozilla.fenix.debugsettings.store.DebugDrawerNavigationMiddleware
 import org.mozilla.fenix.debugsettings.store.DebugDrawerStore
-import org.mozilla.fenix.debugsettings.store.DebugDrawerTelemetryMiddleware
 import org.mozilla.fenix.debugsettings.store.DrawerStatus
 import org.mozilla.fenix.debugsettings.tabs.TabGroupTools
 import org.mozilla.fenix.ext.components
@@ -196,7 +195,6 @@ private fun FenixOverlay(
                         navController = navController,
                         scope = coroutineScope,
                     ),
-                    DebugDrawerTelemetryMiddleware(),
                 )
         )
     }

@@ -12,7 +12,6 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 import mozilla.components.browser.domains.autocomplete.BaseDomainAutocompleteProvider
 import mozilla.components.browser.domains.autocomplete.ShippedDomainsProvider
 import mozilla.components.browser.engine.gecko.GeckoEngine
@@ -63,14 +62,10 @@ import mozilla.components.feature.recentlyclosed.RecentlyClosedTabsStorage
 import mozilla.components.feature.search.SearchApplicationName
 import mozilla.components.feature.search.SearchDeviceType
 import mozilla.components.feature.search.SearchUpdateChannel
-import mozilla.components.feature.search.middleware.AdsTelemetryMiddleware
 import mozilla.components.feature.search.middleware.SearchExtraParams
 import mozilla.components.feature.search.middleware.SearchMiddleware
 import mozilla.components.feature.search.region.RegionMiddleware
 import mozilla.components.feature.search.storage.SearchEngineSelectorConfig
-import mozilla.components.feature.search.telemetry.SerpTelemetryRepository
-import mozilla.components.feature.search.telemetry.ads.AdsTelemetry
-import mozilla.components.feature.search.telemetry.incontent.InContentTelemetry
 import mozilla.components.feature.session.HistoryDelegate
 import mozilla.components.feature.session.middleware.LastAccessMiddleware
 import mozilla.components.feature.session.middleware.undo.UndoMiddleware
@@ -146,7 +141,6 @@ import org.mozilla.fenix.summarization.eligibility.SummarizationEligibilityCheck
 import org.mozilla.fenix.summarization.onboarding.FenixSummarizationFeatureConfiguration
 import org.mozilla.fenix.summarization.onboarding.SummarizationFeatureDiscoveryConfiguration
 import org.mozilla.fenix.tabgroups.middleware.TabGroupMiddleware
-import org.mozilla.fenix.telemetry.TelemetryMiddleware
 import org.mozilla.fenix.translations.TranslationsEnabledSettings
 import org.mozilla.fenix.utils.Settings.DeleteDownloadBehavior
 import org.mozilla.fenix.utils.getUndoDelay
@@ -192,14 +186,14 @@ class Core(
                 globalPrivacyControlEnabled = context.components.settings.shouldEnableGlobalPrivacyControl,
                 fdlibmMathEnabled = FxNimbus.features.fingerprintingProtection.value().fdlibmMath,
                 emailTrackerBlockingPrivateBrowsing = true,
-                userCharacteristicPingCurrentVersion = FxNimbus.features.userCharacteristics.value().currentVersion,
+                userCharacteristicPingCurrentVersion = 0,
                 getDesktopMode = {
                     store.state.desktopMode
                 },
                 webContentIsolationStrategy =
                     WebContentIsolationStrategy.fromValue(FxNimbus.features.fission.value().isolationStrategy),
                 fetchPriorityEnabled = true,
-                parallelMarkingEnabled = FxNimbus.features.javascript.value().parallelMarkingEnabled,
+                parallelMarkingEnabled = true,
                 certificateTransparencyMode = FxNimbus.features.pki.value().certificateTransparencyMode,
                 postQuantumKeyExchangeEnabled = FxNimbus.features.pqcrypto.value().postQuantumKeyExchangeEnabled,
                 dohAutoselectEnabled = FxNimbus.features.doh.value().autoselectEnabled,
@@ -325,13 +319,6 @@ class Core(
      * of the process. application-services only holds a weak reference to each client and skips collections whose
      * client has been collected, so a short-lived repository would opt `search-telemetry-v2` out of syncing entirely.
      */
-    val serpTelemetryRepository by lazy {
-        SerpTelemetryRepository(
-            collectionName = COLLECTION_NAME,
-            remoteSettingsService = context.components.remoteSettingsService.value,
-        )
-    }
-
     /** The [BrowserStore] holds the global [BrowserState]. */
     val store by lazy {
         val searchExtraParamsNimbus = FxNimbus.features.searchExtraParams.value()
@@ -373,7 +360,6 @@ class Core(
                         ),
                 ),
                 ReaderViewMiddleware(),
-                TelemetryMiddleware(context, context.components.settings, metrics, crashReporter),
                 ThumbnailsMiddleware(thumbnailStorage),
                 UndoMiddleware(context.components.settings.getUndoDelay()),
                 RegionMiddleware(context, locationService, applicationScope = applicationScope),
@@ -386,7 +372,6 @@ class Core(
                 ),
                 RecordingDevicesMiddleware(context, context.components.notificationsDelegate),
                 PromptMiddleware(),
-                AdsTelemetryMiddleware(adsTelemetry),
                 LastMediaAccessMiddleware(),
                 HistoryMetadataMiddleware(historyMetadataService),
                 ProtectionsDashboardMiddleware(protectionsStorage),
@@ -431,14 +416,6 @@ class Core(
             .apply {
                 // Install the "icons" WebExtension to automatically load icons for every visited website.
                 icons.install(engine, this)
-
-                applicationScope.launch {
-                    val providerList = serpTelemetryRepository.updateProviderList()
-                    // Install the "ads" WebExtension to get the links in an partner page.
-                    adsTelemetry.install(engine, this@apply, providerList)
-                    // Install the "cookies" WebExtension and tracks user interaction with SERPs.
-                    searchTelemetry.install(engine, this@apply, providerList)
-                }
 
                 WebNotificationFeature(
                     context,
@@ -501,14 +478,6 @@ class Core(
 
     val metrics by lazy {
         context.components.analytics.metrics
-    }
-
-    val adsTelemetry by lazy {
-        AdsTelemetry()
-    }
-
-    val searchTelemetry by lazy {
-        InContentTelemetry()
     }
 
     /** Shortcut component for managing shortcuts on the device home screen. */
@@ -782,8 +751,6 @@ class Core(
         // Maximum number of suggestions returned from shortcut search engine.
         const val METADATA_SHORTCUT_SUGGESTION_LIMIT = 20
 
-        // collection name to fetch from server for SERP telemetry
-        const val COLLECTION_NAME = "search-telemetry-v2"
         internal const val REMOTE_PROD_ENDPOINT_URL = "https://firefox.settings.services.mozilla.com"
         internal const val REMOTE_STAGE_ENDPOINT_URL = "https://firefox.settings.services.allizom.org"
         internal const val REMOTE_DEV_ENDPOINT_URL = "https://remote-settings-dev.allizom.org"

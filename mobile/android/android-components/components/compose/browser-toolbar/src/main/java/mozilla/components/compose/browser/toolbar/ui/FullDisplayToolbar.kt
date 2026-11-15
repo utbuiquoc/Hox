@@ -48,8 +48,8 @@ import mozilla.components.compose.browser.toolbar.store.ToolbarGravity.Top
 import mozilla.components.compose.browser.toolbar.utils.DisplayToolbarDataProvider
 import mozilla.components.compose.browser.toolbar.utils.DisplayToolbarPreviewModel
 
-private const val NO_TOOLBAR_PADDING_DP = 0
-private const val TOOLBAR_PADDING_DP = 8
+internal const val NO_TOOLBAR_PADDING_DP = 0
+internal const val TOOLBAR_PADDING_DP = 8
 private const val LARGE_TOOLBAR_PADDING_DP = 24
 
 @Suppress("LongMethod", "LongParameterList", "CyclomaticComplexMethod", "CognitiveComplexMethod")
@@ -92,25 +92,10 @@ internal fun FullDisplayToolbar(
 
                 Row(
                     modifier =
-                        Modifier.padding(
-                                start =
-                                    when (browserActionsStart.isEmpty()) {
-                                        true -> TOOLBAR_PADDING_DP.dp
-                                        false -> NO_TOOLBAR_PADDING_DP.dp
-                                    },
-                                top = TOOLBAR_PADDING_DP.dp,
-                                end =
-                                    when (browserActionsEnd.isEmpty()) {
-                                        true -> TOOLBAR_PADDING_DP.dp
-                                        false -> NO_TOOLBAR_PADDING_DP.dp
-                                    },
-                                bottom =
-                                    when (gravity) {
-                                        Top -> TOOLBAR_PADDING_DP
-                                        Bottom ->
-                                            if (browserActionsEnd.isEmpty()) NO_TOOLBAR_PADDING_DP
-                                            else TOOLBAR_PADDING_DP
-                                    }.dp,
+                        Modifier.urlPillOuterPadding(
+                                gravity = gravity,
+                                hasBrowserActionsStart = browserActionsStart.isNotEmpty(),
+                                hasBrowserActionsEnd = browserActionsEnd.isNotEmpty(),
                             )
                             .height(48.dp)
                             .trackUrlPillStartAnchor()
@@ -211,11 +196,29 @@ internal fun FullDisplayToolbar(
 }
 
 /**
+ * Applies the outer spacing around the center URL pill so display and desktop edit modes align identically.
+ */
+internal fun Modifier.urlPillOuterPadding(
+    gravity: ToolbarGravity,
+    hasBrowserActionsStart: Boolean,
+    hasBrowserActionsEnd: Boolean,
+): Modifier = padding(
+    start = if (hasBrowserActionsStart) NO_TOOLBAR_PADDING_DP.dp else TOOLBAR_PADDING_DP.dp,
+    top = TOOLBAR_PADDING_DP.dp,
+    end = if (hasBrowserActionsEnd) NO_TOOLBAR_PADDING_DP.dp else TOOLBAR_PADDING_DP.dp,
+    bottom =
+        when (gravity) {
+            Top -> TOOLBAR_PADDING_DP
+            Bottom -> if (hasBrowserActionsEnd) TOOLBAR_PADDING_DP else NO_TOOLBAR_PADDING_DP
+        }.dp,
+)
+
+/**
  * Overrides `onSurface` for [content] with [color] so browser action icons (and the tab counter) can be tinted
  * independently of the page actions inside the address bar. A `null` [color] leaves the ambient color scheme untouched.
  */
 @Composable
-private fun BrowserActionsColorScheme(
+internal fun BrowserActionsColorScheme(
     color: Color?,
     content: @Composable () -> Unit,
 ) {
@@ -234,7 +237,7 @@ private fun BrowserActionsColorScheme(
  *
  * This is an interim fix for https://issuetracker.google.com/issues/515098186.
  */
-private fun Modifier.adaptiveHorizontalPadding() = layout { measurable, constraints ->
+internal fun Modifier.adaptiveHorizontalPadding() = layout { measurable, constraints ->
     val isSmallWidthScreen = constraints.maxWidth < WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND.dp.roundToPx()
     val padding =
         when (isSmallWidthScreen) {

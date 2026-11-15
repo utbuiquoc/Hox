@@ -100,6 +100,7 @@ import org.mozilla.fenix.components.search.BOOKMARKS_SEARCH_ENGINE_ID
 import org.mozilla.fenix.components.search.HISTORY_SEARCH_ENGINE_ID
 import org.mozilla.fenix.components.search.TABS_SEARCH_ENGINE_ID
 import org.mozilla.fenix.ext.isGoogleSearchEngine
+import org.mozilla.fenix.ext.isTabletInterface
 import org.mozilla.fenix.ext.toolbarHintRes
 import org.mozilla.fenix.search.EditPageEndActionsInteractions.ClearSearchClicked
 import org.mozilla.fenix.search.EditPageEndActionsInteractions.LensButtonClicked
@@ -341,7 +342,9 @@ class BrowserToolbarSearchMiddleware(
                 } ?: true
             }
 
-        navController.navigate(NavGraphDirections.actionGlobalBrowser())
+        if (!uiContext.isTabletInterface(settings) || navController.currentDestination?.id != R.id.browserFragment) {
+            navController.navigate(NavGraphDirections.actionGlobalBrowser())
+        }
 
         val searchAccessPoint =
             when (appStore.state.searchState.searchAccessPoint) {
@@ -615,7 +618,13 @@ class BrowserToolbarSearchMiddleware(
                             flags = EngineSession.LoadUrlFlags.external(),
                             private = browsingModeManager.mode.isPrivate,
                         )
-                        navController.navigate(R.id.action_global_browser)
+                        if (!uiContext.isTabletInterface(settings) ||
+                            navController.currentDestination?.id != R.id.browserFragment
+                        ) {
+                            navController.navigate(R.id.action_global_browser)
+                        } else {
+                            appStore.dispatch(SearchEnded)
+                        }
                     }
                 }
         }
@@ -633,7 +642,13 @@ class BrowserToolbarSearchMiddleware(
                         // the browser to the front. This job dies with the toolbar's view; the tab
                         // survives that, this navigation doesn't.
                         appStore.dispatch(AppAction.LensAction.LensResultConsumed)
-                        navController.navigate(R.id.action_global_browser)
+                        if (!uiContext.isTabletInterface(settings) ||
+                            navController.currentDestination?.id != R.id.browserFragment
+                        ) {
+                            navController.navigate(R.id.action_global_browser)
+                        } else {
+                            appStore.dispatch(SearchEnded)
+                        }
                     }
                 }
         }

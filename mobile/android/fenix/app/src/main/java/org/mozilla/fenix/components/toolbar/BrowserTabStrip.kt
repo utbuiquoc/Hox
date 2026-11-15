@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.coordinatorlayout.widget.CoordinatorLayout.LayoutParams
 import androidx.core.view.isVisible
 import org.mozilla.fenix.R
+import org.mozilla.fenix.ext.isTabletInterface
 import org.mozilla.fenix.utils.Settings
 
 /**
@@ -60,9 +61,12 @@ class BrowserTabStrip(
     }
 
     private fun BrowserTabStripView.setDynamicBehavior() {
-        if (settings.isDynamicToolbarEnabled) {
-            (layoutParams as LayoutParams).apply {
-                behavior = NavbarToolbarSyncBehavior(context)
+        val isTabletInterface = context.isTabletInterface(settings)
+        (layoutParams as? LayoutParams)?.apply {
+            behavior = if (settings.isDynamicToolbarEnabled && !settings.shouldUseFixedTopToolbar && !isTabletInterface) {
+                NavbarToolbarSyncBehavior(context)
+            } else {
+                null
             }
         }
     }

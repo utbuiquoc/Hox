@@ -84,6 +84,7 @@ import mozilla.components.ui.icons.R as iconsR
 import org.mozilla.fenix.GleanMetrics.TabStrip as TabStripMetrics
 import org.mozilla.fenix.R
 import org.mozilla.fenix.components.AppStore
+import org.mozilla.fenix.components.appstate.AppAction.SearchAction.SearchEnded
 import org.mozilla.fenix.components.components
 import org.mozilla.fenix.compose.Favicon
 import org.mozilla.fenix.compose.HorizontalFadingEdgeBox
@@ -207,15 +208,32 @@ fun TabStrip(
             state = state,
             showTabCounterButton = showTabCounterButton,
             colors = tabStripColors,
-            onAddTabClick = createAddTabClickHandler(onAddTabClick),
+            onAddTabClick =
+                createAddTabClickHandler {
+                    if (appStore.state.searchState.isSearchActive) {
+                        appStore.dispatch(SearchEnded)
+                    }
+                    onAddTabClick()
+                },
             onCloseTabClick =
                 createCloseTabClickHandler(
                     numberOfTabs = state.tabs.size,
                     tabsUseCases = tabsUseCases,
                     onLastTabClose = onLastTabClose,
-                    onCloseTabClick = onCloseTabClick,
+                    onCloseTabClick = { isPrivate ->
+                        if (appStore.state.searchState.isSearchActive) {
+                            appStore.dispatch(SearchEnded)
+                        }
+                        onCloseTabClick(isPrivate)
+                    },
                 ),
-            onSelectedTabClick = createSelectedTabClickHandler(tabsUseCases, onSelectedTabClick),
+            onSelectedTabClick =
+                createSelectedTabClickHandler(tabsUseCases) { url ->
+                    if (appStore.state.searchState.isSearchActive) {
+                        appStore.dispatch(SearchEnded)
+                    }
+                    onSelectedTabClick(url)
+                },
             onMove = createMoveTabHandler(tabsUseCases),
             onTabCounterClick = onTabCounterClick,
         )

@@ -76,7 +76,6 @@ import mozilla.components.support.base.android.DefaultPowerManagerInfoProvider
 import mozilla.components.support.base.android.PowerManagerInfoProvider
 import mozilla.components.support.base.ext.areNotificationsEnabledSafe
 import mozilla.components.support.base.ext.isNotificationChannelEnabled
-import mozilla.components.support.base.facts.register
 import mozilla.components.support.base.log.Log
 import mozilla.components.support.base.log.logger.Logger
 import mozilla.components.support.base.log.sink.AndroidLogSink
@@ -116,7 +115,6 @@ import org.mozilla.fenix.components.Core
 import org.mozilla.fenix.components.appstate.AppAction
 import org.mozilla.fenix.components.initializeGlean
 import org.mozilla.fenix.components.metrics.MozillaProductDetector
-import org.mozilla.fenix.components.startMetricsIfEnabled
 import org.mozilla.fenix.experiments.maybeFetchExperiments
 import org.mozilla.fenix.ext.application
 import org.mozilla.fenix.ext.components
@@ -130,11 +128,7 @@ import org.mozilla.fenix.lifecycle.VisibilityLifecycleObserver
 import org.mozilla.fenix.nimbus.FxNimbus
 import org.mozilla.fenix.onboarding.MARKETING_CHANNEL_ID
 import org.mozilla.fenix.onboarding.reconcileOnboardingCompletionState
-import org.mozilla.fenix.perf.ApplicationExitInfoMetrics
-import org.mozilla.fenix.perf.MarkersActivityLifecycleCallbacks
-import org.mozilla.fenix.perf.ProfilerMarkerFactProcessor
 import org.mozilla.fenix.perf.StartupTimeline
-import org.mozilla.fenix.perf.StorageStatsMetrics
 import org.mozilla.fenix.perf.runBlockingIncrement
 import org.mozilla.fenix.privacyreport.PrivacyReportWorkerFactory
 import org.mozilla.fenix.push.PushFxaIntegration
@@ -347,8 +341,6 @@ open class FenixApplication : Application(), Provider, ThemeProvider {
         // Initialize Nimbus and its backend.
         initializeNimbus()
 
-        ProfilerMarkerFactProcessor.create { components.core.engine.profiler }.register()
-
         applicationScope.launch {
             initializeEmojiCompat()
         }
@@ -365,14 +357,7 @@ open class FenixApplication : Application(), Provider, ThemeProvider {
         // this will be a no-op and initialization may be attempted after onboarding.
         maybeInitializeGlean()
 
-        // Initialize the [BrowserStore] so that [setStartupMetrics] can reference this.
-        // Note: This is a historical artifact and should be revisited.
-        val store = components.core.store
-
-        // StartupMetrics accesses shared preferences so do this off thread.
-        applicationScope.launch(ioDispatcher) {
-            setStartupMetrics(store, components.settings)
-        }
+        components.core.store
 
         // Start setup for concept-fetch networking in megazord. This runs off-thread, but we wait
         // before for its completion synchronously.
@@ -415,22 +400,6 @@ open class FenixApplication : Application(), Provider, ThemeProvider {
     private fun setupPostMegazord() {
         setupLeakCanary()
 
-        if (components.fenixOnboarding.userHasBeenOnboarded()) {
-            startMetricsIfEnabled(
-                logger = logger,
-                analytics = components.analytics,
-                isTelemetryEnabled = components.settings.isTelemetryEnabled,
-                isMarketingTelemetryEnabled =
-                    components.settings.isMarketingTelemetryEnabled &&
-                        components.settings.hasMadeMarketingTelemetrySelection,
-                isDailyUsagePingEnabled = components.settings.isDailyUsagePingEnabled,
-            )
-        } else {
-            CoroutineScope(IO).launch {
-                components.distributionIdManager.startAdjustIfSkippingConsentScreen()
-            }
-        }
-
         setupPush()
 
         maybeSetupIPProtection()
@@ -439,7 +408,6 @@ open class FenixApplication : Application(), Provider, ThemeProvider {
 
         visibilityLifecycleCallback = VisibilityLifecycleCallback(getSystemService())
         registerActivityLifecycleCallbacks(visibilityLifecycleCallback)
-        registerActivityLifecycleCallbacks(MarkersActivityLifecycleCallbacks(components.core.engine))
 
         components.appStartReasonProvider.registerInAppOnCreate(this)
         components.startupActivityLog.registerInAppOnCreate(this)
@@ -461,8 +429,6 @@ open class FenixApplication : Application(), Provider, ThemeProvider {
                     settings = components.settings,
                 ),
             )
-
-        components.analytics.metricsStorage.tryRegisterAsUsageRecorder(this)
 
         CoroutineScope(IO).launch {
             components.useCases.wallpaperUseCases.fetchCurrentWallpaperUseCase.invoke()
@@ -497,7 +463,6 @@ open class FenixApplication : Application(), Provider, ThemeProvider {
         // startup path, before the UI finishes drawing (i.e. visual completeness).
         queueInitStorageAndServices(queue)
         queueMenuCustomizationWarmUp(queue)
-        queueMetrics(queue)
         queueEngineWarmup(queue)
         queueIncrementNumberOfAppLaunches(queue)
         queueRestoreLocale(queue)
@@ -511,8 +476,6 @@ open class FenixApplication : Application(), Provider, ThemeProvider {
         if (components.settings.enableFxSuggest) {
             queueSuggestIngest(queue)
         }
-
-        queueCollectProcessExitInfo(queue)
     }
 
     private inline fun runOnVisualCompleteness(
@@ -584,14 +547,6 @@ open class FenixApplication : Application(), Provider, ThemeProvider {
                     components.relayFeatureIntegration.start()
                 }
             }
-        }
-
-    private fun queueMetrics(queue: RunWhenReadyQueue) =
-        runOnVisualCompleteness(queue) {
-            // Because it may be slow to capture the storage stats, it might be preferred to
-            // create a WorkManager task for this metric, however, I ran out of
-            // implementation time and WorkManager is harder to test.
-            StorageStatsMetrics.report(applicationContext, applicationScope)
         }
 
     private fun queueEngineWarmup(queue: RunWhenReadyQueue) =
@@ -673,15 +628,6 @@ open class FenixApplication : Application(), Provider, ThemeProvider {
     private fun queueDownloadWallpapers(queue: RunWhenReadyQueue) =
         runOnVisualCompleteness(queue) {
             downloadWallpapers()
-        }
-
-    private fun queueCollectProcessExitInfo(queue: RunWhenReadyQueue) =
-        runOnVisualCompleteness(queue) {
-            if (SDK_INT >= Build.VERSION_CODES.R && components.settings.isTelemetryEnabled) {
-                applicationScope.launch(ioDispatcher) {
-                    ApplicationExitInfoMetrics.recordProcessExits(applicationContext)
-                }
-            }
         }
 
     private fun queueMenuCustomizationWarmUp(queue: RunWhenReadyQueue) =

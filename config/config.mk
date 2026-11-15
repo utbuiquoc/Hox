@@ -118,7 +118,7 @@ INCLUDES = \
   -I$(ABS_DIST)/include \
   $(NULL)
 
-LDFLAGS		= $(COMPUTED_LDFLAGS)
+LDFLAGS		= $(COMPUTED_LDFLAGS) $(if $(findstring -flto=thin,$(COMPUTED_LDFLAGS)),-Wl,--thinlto-cache-dir=/home/rua/.mozbuild/thinlto-cache -Wl,--thinlto-cache-policy=cache_size_bytes=5g:cache_size_files=20000)
 
 COMPILE_CFLAGS	= $(COMPUTED_CFLAGS) $(COMPUTED_PGO_CFLAGS) $(_DEPEND_CFLAGS)
 COMPILE_CXXFLAGS = $(COMPUTED_CXXFLAGS) $(COMPUTED_PGO_CFLAGS) $(_DEPEND_CFLAGS)

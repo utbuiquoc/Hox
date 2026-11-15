@@ -16,14 +16,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.unit.IntRect
 import androidx.coordinatorlayout.widget.CoordinatorLayout
 import androidx.coordinatorlayout.widget.CoordinatorLayout.LayoutParams
 import androidx.core.view.isVisible
@@ -54,6 +59,8 @@ import org.mozilla.fenix.components.AppStore
 import org.mozilla.fenix.components.appstate.AppAction.SearchAction.SearchEnded
 import org.mozilla.fenix.components.toolbar.ToolbarPosition.BOTTOM
 import org.mozilla.fenix.components.toolbar.ToolbarPosition.TOP
+import org.mozilla.fenix.ext.isTabletInterface
+import org.mozilla.fenix.search.awesomebar.LocalDesktopUrlPillAnchorBounds
 import org.mozilla.fenix.theme.FirefoxTheme
 import org.mozilla.fenix.utils.Settings
 
@@ -112,9 +119,17 @@ class BrowserToolbarComposable(
                     customTabSession == null && settings.shouldShowTabGroupsStrip
                 }
                 val isSearchActive = appStore.observeAsComposableState { it.searchState.isSearchActive }.value
-                val hasBottomStrip = (shouldShowTabStripAtBottom && !isSearchActive) || shouldShowTabGroupsStrip
+                LocalConfiguration.current
+                val isTabletInterface = activity.isTabletInterface(settings)
+                val hasBottomStrip =
+                    (shouldShowTabStripAtBottom && (!isSearchActive || isTabletInterface)) || shouldShowTabGroupsStrip
                 val customColors = browserScreenStore.observeAsComposableState { it.customTabColors }
                 val shouldUseBottomToolbar = remember { settings.shouldUseBottomToolbar }
+                var desktopUrlPillBounds by remember { mutableStateOf<IntRect?>(null) }
+                val dismissDesktopSearch = {
+                    appStore.dispatch(SearchEnded)
+                    browserStore.dispatch(AwesomeBarAction.EngagementFinished(abandoned = true))
+                }
 
                 val toolbarState by toolbarStore.stateFlow.collectAsState()
                 val toolbarCFR = toolbarState.displayState.cfr
@@ -160,47 +175,62 @@ class BrowserToolbarComposable(
                         }
 
                     MaterialTheme(colorScheme = colorScheme) {
-                        when (!shouldUseBottomToolbar) {
-                            true ->
-                                Column(modifier = Modifier.fillMaxWidth().wrapContentHeight()) {
-                                    if (shouldShowTabStripAtTop) {
-                                        tabStripContent()
-                                    }
-                                    BrowserToolbar(
-                                        store = toolbarStore,
-                                        cfr = toolbarCFR,
-                                        useMinimalBottomToolbarWhenEnteringText =
-                                            settings.shouldUseMinimalBottomToolbarWhenEnteringText,
-                                    )
-                                    if (customTabSession == null) {
-                                        searchSuggestionsContent(Modifier.weight(1f))
-                                    }
-                                }
-
-                            false ->
-                                Column(modifier = Modifier.fillMaxWidth().wrapContentHeight()) {
-                                    if (customTabSession == null) {
-                                        searchSuggestionsContent(Modifier.weight(1f))
-                                    }
-                                    TopDividerColumn(showDivider = hasBottomStrip, modifier = Modifier.fillMaxWidth()) {
-                                        if (shouldShowTabStripAtBottom) {
-                                            Box(modifier = Modifier.background(MaterialTheme.colorScheme.surface)) {
-                                                tabStripContent()
-                                            }
-                                        }
-                                        if (shouldShowTabGroupsStrip) {
-                                            tabGroupsStripContent()
+                        CompositionLocalProvider(
+                            LocalDesktopUrlPillAnchorBounds provides
+                                if (isSearching && isTabletInterface) desktopUrlPillBounds else null
+                        ) {
+                            when (!shouldUseBottomToolbar) {
+                                true ->
+                                    Column(modifier = Modifier.fillMaxWidth().wrapContentHeight()) {
+                                        if (shouldShowTabStripAtTop) {
+                                            tabStripContent()
                                         }
                                         BrowserToolbar(
                                             store = toolbarStore,
                                             cfr = toolbarCFR,
                                             useMinimalBottomToolbarWhenEnteringText =
                                                 settings.shouldUseMinimalBottomToolbarWhenEnteringText,
-                                            showDivider = !hasBottomStrip,
+                                            useDesktopEditToolbar = isTabletInterface,
+                                            onDesktopUrlPillBoundsChanged = { desktopUrlPillBounds = it },
+                                            onDismissDesktopSearch = dismissDesktopSearch,
                                         )
-                                        navigationBarContent?.invoke()
+                                        if (customTabSession == null) {
+                                            searchSuggestionsContent(
+                                                if (isTabletInterface) Modifier else Modifier.weight(1f)
+                                            )
+                                        }
                                     }
-                                }
+
+                                false ->
+                                    Column(modifier = Modifier.fillMaxWidth().wrapContentHeight()) {
+                                        if (customTabSession == null) {
+                                            searchSuggestionsContent(
+                                                if (isTabletInterface) Modifier else Modifier.weight(1f)
+                                            )
+                                        }
+                                        TopDividerColumn(showDivider = hasBottomStrip, modifier = Modifier.fillMaxWidth()) {
+                                            if (shouldShowTabStripAtBottom) {
+                                                Box(modifier = Modifier.background(MaterialTheme.colorScheme.surface)) {
+                                                    tabStripContent()
+                                                }
+                                            }
+                                            if (shouldShowTabGroupsStrip) {
+                                                tabGroupsStripContent()
+                                            }
+                                            BrowserToolbar(
+                                                store = toolbarStore,
+                                                cfr = toolbarCFR,
+                                                useMinimalBottomToolbarWhenEnteringText =
+                                                    settings.shouldUseMinimalBottomToolbarWhenEnteringText,
+                                                showDivider = !hasBottomStrip,
+                                                useDesktopEditToolbar = isTabletInterface,
+                                                onDesktopUrlPillBoundsChanged = { desktopUrlPillBounds = it },
+                                                onDismissDesktopSearch = dismissDesktopSearch,
+                                            )
+                                            navigationBarContent?.invoke()
+                                        }
+                                    }
+                            }
                         }
                     }
                 }
@@ -285,16 +315,22 @@ class BrowserToolbarComposable(
      * @param shouldDisableScroll force disable of the dynamic behavior irrespective of the intrinsic checks.
      */
     fun setToolbarBehavior(toolbarPosition: ToolbarPosition, shouldDisableScroll: Boolean = false) {
+        val isTabletInterface = activity.isTabletInterface(settings)
+        if (!settings.isDynamicToolbarEnabled || isTabletInterface) {
+            expandToolbarAndMakeItFixed()
+            return
+        }
+
         when (toolbarPosition) {
             ToolbarPosition.BOTTOM -> {
-                if (settings.isDynamicToolbarEnabled && !settings.shouldUseFixedTopToolbar) {
+                if (!settings.shouldUseFixedTopToolbar) {
                     setDynamicToolbarBehavior(true)
                 } else {
                     expandToolbarAndMakeItFixed()
                 }
             }
             ToolbarPosition.TOP -> {
-                if (settings.shouldUseFixedTopToolbar || !settings.isDynamicToolbarEnabled || shouldDisableScroll) {
+                if (settings.shouldUseFixedTopToolbar || shouldDisableScroll) {
                     expandToolbarAndMakeItFixed()
                 } else {
                     setDynamicToolbarBehavior(false)

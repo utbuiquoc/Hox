@@ -15,6 +15,7 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.VisibleForTesting
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -41,10 +42,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.dp
 import androidx.core.view.ViewCompat
@@ -62,6 +67,7 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import mozilla.components.browser.state.action.AwesomeBarAction
 import mozilla.components.browser.state.state.TabSessionState
 import mozilla.components.browser.state.store.BrowserStore
 import mozilla.components.compose.base.modifier.thenConditional
@@ -81,6 +87,7 @@ import mozilla.components.lib.state.ext.observeAsComposableState
 import mozilla.components.support.base.feature.UserInteractionHandler
 import mozilla.components.support.base.feature.ViewBoundFeatureWrapper
 import mozilla.components.support.ktx.android.view.createWindowInsetsController
+import mozilla.components.support.ktx.android.view.hideKeyboard
 import mozilla.components.support.ktx.android.view.toScope
 import mozilla.components.support.utils.BuildManufacturerChecker
 import mozilla.components.support.utils.ColorUtils.isDark
@@ -116,6 +123,7 @@ import org.mozilla.fenix.components.appstate.AppAction.ContentRecommendationsAct
 import org.mozilla.fenix.components.appstate.AppAction.MessagingAction
 import org.mozilla.fenix.components.appstate.AppAction.MessagingAction.MicrosurveyAction
 import org.mozilla.fenix.components.appstate.AppAction.ReviewPromptAction.CheckIfEligibleForReviewPrompt
+import org.mozilla.fenix.components.appstate.AppAction.SearchAction.SearchEnded
 import org.mozilla.fenix.components.appstate.AppState
 import org.mozilla.fenix.components.components
 import org.mozilla.fenix.components.metrics.installSourcePackage
@@ -127,6 +135,7 @@ import org.mozilla.fenix.ext.application
 import org.mozilla.fenix.ext.asRecentTabs
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.hideToolbar
+import org.mozilla.fenix.ext.isTabletInterface
 import org.mozilla.fenix.ext.nav
 import org.mozilla.fenix.ext.recordEventInNimbus
 import org.mozilla.fenix.ext.requireComponents
@@ -199,7 +208,6 @@ import org.mozilla.fenix.tabgroups.strip.observeSelectedTabForNavigation
 import org.mozilla.fenix.tabgroups.strip.redux.TabGroupsStripAction
 import org.mozilla.fenix.tabgroups.strip.redux.TabGroupsStripMiddleware
 import org.mozilla.fenix.tabgroups.strip.redux.TabGroupsStripStore
-import org.mozilla.fenix.tabgroups.strip.redux.TabGroupsStripTelemetryMiddleware
 import org.mozilla.fenix.tabstray.redux.state.Page
 import org.mozilla.fenix.tabstray.ui.AccessPoint
 import org.mozilla.fenix.termsofuse.store.DefaultPrivacyNoticeBannerRepository
@@ -207,7 +215,6 @@ import org.mozilla.fenix.termsofuse.store.PrivacyNoticeBannerAction
 import org.mozilla.fenix.termsofuse.store.PrivacyNoticeBannerMiddleware
 import org.mozilla.fenix.termsofuse.store.PrivacyNoticeBannerState
 import org.mozilla.fenix.termsofuse.store.PrivacyNoticeBannerStore
-import org.mozilla.fenix.termsofuse.store.PrivacyNoticeBannerTelemetryMiddleware
 import org.mozilla.fenix.termsofuse.store.Surface
 import org.mozilla.fenix.theme.FirefoxTheme
 import org.mozilla.fenix.trackingprotection.TrackersBlockedFeature
@@ -271,9 +278,6 @@ class HomeFragment : Fragment(), UserInteractionHandler, OnLongPressedListener {
                         expandGroup = { navigateToExpandedTabGroup(it) },
                         scope = lifecycleScope,
                     ),
-                    TabGroupsStripTelemetryMiddleware(
-                        isHomepageAsNewTabEnabled = { context?.components?.settings?.enableHomepageAsNewTab ?: false }
-                    ),
                 )
         )
     }
@@ -285,7 +289,6 @@ class HomeFragment : Fragment(), UserInteractionHandler, OnLongPressedListener {
             middleware =
                 listOf(
                     PrivacyNoticeBannerMiddleware(repository = privacyNoticeBannerRepository),
-                    PrivacyNoticeBannerTelemetryMiddleware(),
                 ),
         )
     }
@@ -728,6 +731,9 @@ class HomeFragment : Fragment(), UserInteractionHandler, OnLongPressedListener {
                 var bottomBarHeight by remember { mutableIntStateOf(0) }
                 val fadeContentEdges = isOverUniversalEdgeToEdgeWallpaper(appState.value)
                 val searchBackgroundColor = toolbarView.searchBackgroundColor()
+                val focusManager = LocalFocusManager.current
+                val keyboardController = LocalSoftwareKeyboardController.current
+                val isTablet = LocalContext.current.isTabletInterface(settings)
 
                 LaunchedEffect(currentWallpaper.name, isPrivateMode, searchBackgroundColor) {
                     applyWallpaperSystemBarsTheme(
@@ -789,6 +795,21 @@ class HomeFragment : Fragment(), UserInteractionHandler, OnLongPressedListener {
                                 microsurveyVisible = microsurveyVisible,
                                 microsurvey = appState.value.microsurvey.current,
                             )
+                            if (isTablet && appState.value.searchState.isSearchActive) {
+                                Box(
+                                    modifier =
+                                        Modifier.fillMaxSize().pointerInput(Unit) {
+                                            detectTapGestures {
+                                                focusManager.clearFocus()
+                                                keyboardController?.hide()
+                                                requireComponents.appStore.dispatch(SearchEnded)
+                                                requireComponents.core.store.dispatch(
+                                                    AwesomeBarAction.EngagementFinished(abandoned = true),
+                                                )
+                                            }
+                                        },
+                                )
+                            }
                         }
                     }
                 }
@@ -870,10 +891,12 @@ class HomeFragment : Fragment(), UserInteractionHandler, OnLongPressedListener {
         colors: ColorScheme,
     ) {
         val isSearchActive = requireComponents.appStore.observeAsComposableState { it.searchState.isSearchActive }.value
+        val isTablet = LocalContext.current.isTabletInterface(settings)
         ToolbarSlot(captureToolbarBounds, { navbarBoundsInRoot = it }) {
             TopDividerColumn(
                 showDivider =
-                    (settings.shouldShowTabStripAtBottom && !isSearchActive) || settings.shouldShowTabGroupsStrip,
+                    (settings.shouldShowTabStripAtBottom && (!isSearchActive || isTablet)) ||
+                        settings.shouldShowTabGroupsStrip,
                 modifier = Modifier.fillMaxWidth(),
                 dividerColor = colors.outlineVariant,
             ) {
@@ -1100,8 +1123,10 @@ class HomeFragment : Fragment(), UserInteractionHandler, OnLongPressedListener {
     }
 
     /** Whether the homepage is drawn over a universal edge-to-edge wallpaper, outside private mode and search. */
-    private fun isOverUniversalEdgeToEdgeWallpaper(appState: AppState): Boolean =
-        !appState.mode.isPrivate && !appState.searchState.isSearchActive
+    private fun isOverUniversalEdgeToEdgeWallpaper(appState: AppState): Boolean {
+        val isTablet = context?.isTabletInterface(requireComponents.settings) == true
+        return !appState.mode.isPrivate && (!appState.searchState.isSearchActive || isTablet)
+    }
 
     /** Whether the gradient scrims are drawn behind the homepage toolbars over a universal edge-to-edge wallpaper. */
     private fun shouldShowToolbarScrim(appState: AppState): Boolean =
@@ -1111,7 +1136,8 @@ class HomeFragment : Fragment(), UserInteractionHandler, OnLongPressedListener {
     @Composable
     private fun TabStrip() {
         val isSearchActive = requireComponents.appStore.observeAsComposableState { it.searchState.isSearchActive }.value
-        if (isSearchActive) return
+        val isTablet = LocalContext.current.isTabletInterface(requireComponents.settings)
+        if (isSearchActive && !isTablet) return
 
         // Tabs will not be shown as selected on the homepage when Homepage as a New Tab is not
         // enabled.
@@ -1328,7 +1354,18 @@ class HomeFragment : Fragment(), UserInteractionHandler, OnLongPressedListener {
     }
 
     override fun onBackPressed(): Boolean {
-        if (context == null || !requireComponents.settings.enableHomepageAsNewTab) {
+        val currentContext = context ?: return false
+        val components = requireComponents
+        if (
+            currentContext.isTabletInterface(components.settings) &&
+            components.appStore.state.searchState.isSearchActive
+        ) {
+            view?.hideKeyboard()
+            components.appStore.dispatch(SearchEnded)
+            components.core.store.dispatch(AwesomeBarAction.EngagementFinished(abandoned = true))
+            return true
+        }
+        if (!components.settings.enableHomepageAsNewTab) {
             return false
         }
 

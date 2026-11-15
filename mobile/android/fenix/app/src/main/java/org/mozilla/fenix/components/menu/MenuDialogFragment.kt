@@ -85,7 +85,6 @@ import org.mozilla.fenix.components.menu.compose.configureAsDesktopDropdown
 import org.mozilla.fenix.components.menu.compose.updateDesktopDropdownLayout
 import org.mozilla.fenix.components.menu.middleware.MenuDialogMiddleware
 import org.mozilla.fenix.components.menu.middleware.MenuNavigationMiddleware
-import org.mozilla.fenix.components.menu.middleware.MenuTelemetryMiddleware
 import org.mozilla.fenix.components.menu.store.BrowserMenuState
 import org.mozilla.fenix.components.menu.store.ExtensionMenuState
 import org.mozilla.fenix.components.menu.store.IPProtectionMenuState
@@ -831,7 +830,6 @@ class MenuDialogFragment : BottomSheetDialogFragment() {
                             listOf(
                                 createMenuDialogMiddleware(),
                                 createMenuNavigationMiddleware(),
-                                createMenuTelemetryMiddleware(),
                             ),
                     )
                 }
@@ -982,10 +980,6 @@ class MenuDialogFragment : BottomSheetDialogFragment() {
             scope = coroutineScope,
             webCompatReporterMoreInfoSender = webCompatReporterMoreInfoSender,
         )
-    }
-
-    private fun createMenuTelemetryMiddleware(): MenuTelemetryMiddleware<MenuState, MenuAction> {
-        return MenuTelemetryMiddleware(accessPoint = args.accesspoint)
     }
 
     private fun handleIPProtectionClick(

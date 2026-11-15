@@ -68,6 +68,7 @@ import org.mozilla.fenix.components.AppStore
 import org.mozilla.fenix.components.NimbusComponents
 import org.mozilla.fenix.components.UseCases
 import org.mozilla.fenix.components.appstate.AppAction
+import org.mozilla.fenix.components.appstate.AppAction.SearchAction.SearchEnded
 import org.mozilla.fenix.components.appstate.AppAction.SearchAction.SearchEngineSelected
 import org.mozilla.fenix.components.appstate.AppAction.URLCopiedToClipboard
 import org.mozilla.fenix.components.appstate.AppState
@@ -644,8 +645,26 @@ class FenixSearchMiddlewareTest {
 
         assertTrue(wasSuggestionClickHandled)
         verify { toolbarStore.dispatch(BrowserEditToolbarAction.SearchQueryUpdated(BrowserToolbarQuery(""))) }
+        verify { appStore.dispatch(SearchEnded) }
         browserActionsCaptor.assertLastAction(AwesomeBarAction.SuggestionClicked::class) {
             assertEquals(clickedSuggestion, it.suggestion)
+        }
+    }
+
+    @Test
+    fun `GIVEN already on browserFragment WHEN selectTabUseCase is invoked THEN end search without redundant navigation`() {
+        stubCurrentNavDestination(R.id.browserFragment)
+        val tabsUseCases: TabsUseCases = mockk(relaxed = true)
+        every { useCases.tabsUseCases } returns tabsUseCases
+        val middleware = buildMiddleware(useCases = useCases)
+
+        middleware.selectTabUseCase().invoke("selectedTabId")
+
+        verify { tabsUseCases.selectTab("selectedTabId") }
+        verify { appStore.dispatch(SearchEnded) }
+        verify(exactly = 0) { navController.navigate(R.id.browserFragment) }
+        browserActionsCaptor.assertLastAction(EngagementFinished::class) {
+            assertEquals(false, it.abandoned)
         }
     }
 

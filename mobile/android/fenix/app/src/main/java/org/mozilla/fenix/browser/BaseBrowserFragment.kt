@@ -57,6 +57,7 @@ import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.launch
+import mozilla.components.browser.state.action.AwesomeBarAction
 import mozilla.components.browser.state.action.ContentAction
 import mozilla.components.browser.state.action.SystemPermissionRequestAction
 import mozilla.components.browser.state.selector.findCustomTab
@@ -200,6 +201,7 @@ import org.mozilla.fenix.components.FindInPageIntegration
 import org.mozilla.fenix.components.accounts.FxaWebChannelIntegration
 import org.mozilla.fenix.components.appstate.AppAction
 import org.mozilla.fenix.components.appstate.AppAction.MessagingAction.MicrosurveyAction
+import org.mozilla.fenix.components.appstate.AppAction.SearchAction.SearchEnded
 import org.mozilla.fenix.components.metrics.MetricsUtils
 import org.mozilla.fenix.components.metrics.toSearchAccessPoint
 import org.mozilla.fenix.components.share.ShareSource
@@ -228,6 +230,7 @@ import org.mozilla.fenix.ext.getTopToolbarHeight
 import org.mozilla.fenix.ext.hideToolbar
 import org.mozilla.fenix.ext.isMicrosurveyPromptVisible
 import org.mozilla.fenix.ext.isOnline
+import org.mozilla.fenix.ext.isTabletInterface
 import org.mozilla.fenix.ext.isToolbarAtBottom
 import org.mozilla.fenix.ext.nav
 import org.mozilla.fenix.ext.registerForActivityResult
@@ -256,7 +259,6 @@ import org.mozilla.fenix.tabgroups.strip.observeSelectedTabForNavigation
 import org.mozilla.fenix.tabgroups.strip.redux.TabGroupsStripAction
 import org.mozilla.fenix.tabgroups.strip.redux.TabGroupsStripMiddleware
 import org.mozilla.fenix.tabgroups.strip.redux.TabGroupsStripStore
-import org.mozilla.fenix.tabgroups.strip.redux.TabGroupsStripTelemetryMiddleware
 import org.mozilla.fenix.tabstray.ext.toDisplayTitle
 import org.mozilla.fenix.tabstray.redux.state.Page
 import org.mozilla.fenix.theme.FirefoxTheme
@@ -290,6 +292,7 @@ abstract class BaseBrowserFragment :
 
     @VisibleForTesting @Suppress("VariableNaming") internal var _browserToolbar: BrowserToolbarComposable? = null
     private var awesomeBarComposable: AwesomeBarComposable? = null
+    private var desktopSearchDismissOverlay: View? = null
 
     @VisibleForTesting
     internal val browserToolbar: BrowserToolbarComposable
@@ -566,6 +569,14 @@ abstract class BaseBrowserFragment :
 
         _browserToolbar = initializeBrowserToolbar(activity, store, readerMenuController)
         browserTabStrip = initializeBrowserTabStripView(activity, appStore, settings)
+        if (customTabSessionId == null) {
+            desktopSearchDismissOverlay = initializeDesktopSearchDismissOverlay(
+                activity = activity,
+                appStore = appStore,
+                store = store,
+                settings = settings,
+            )
+        }
 
         if (settings.microsurveyFeatureEnabled) {
             listenForMicrosurveyMessage(context)
@@ -1640,12 +1651,44 @@ abstract class BaseBrowserFragment :
         blackScreenOverlay = null
     }
 
+    private fun initializeDesktopSearchDismissOverlay(
+        activity: HomeActivity,
+        appStore: AppStore,
+        store: BrowserStore,
+        settings: org.mozilla.fenix.utils.Settings,
+    ): View {
+        val overlay = View(activity).apply {
+            isVisible = appStore.state.searchState.isSearchActive && activity.isTabletInterface(settings)
+            isClickable = true
+            isFocusable = false
+            elevation = 0f
+            translationZ = 0f
+            layoutParams = CoordinatorLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            )
+            setOnClickListener {
+                it.hideKeyboard()
+                appStore.dispatch(SearchEnded)
+                store.dispatch(AwesomeBarAction.EngagementFinished(abandoned = true))
+            }
+        }
+        val swipeRefreshIndex = binding.browserLayout.indexOfChild(binding.swipeRefresh)
+        val insertIndex = if (swipeRefreshIndex >= 0) swipeRefreshIndex + 1 else 0
+        binding.browserLayout.addView(overlay, insertIndex)
+        overlay.consumeFrom(appStore, viewLifecycleOwner) { state ->
+            overlay.isVisible = state.searchState.isSearchActive && activity.isTabletInterface(settings)
+        }
+        return overlay
+    }
+
     private fun buildTabStrip(
         appStore: AppStore,
         settings: org.mozilla.fenix.utils.Settings,
     ): @Composable () -> Unit = {
         val isSearchActive = appStore.observeAsComposableState { it.searchState.isSearchActive }.value
-        if (!isSearchActive) {
+        val isTablet = context?.isTabletInterface(settings) == true
+        if (!isSearchActive || isTablet) {
             BrowserTabStripContent(appStore, settings)
         }
     }
@@ -1718,9 +1761,6 @@ abstract class BaseBrowserFragment :
                         isHomepageAsNewTabEnabled = { context?.components?.settings?.enableHomepageAsNewTab ?: false },
                         expandGroup = { navigateToExpandedTabGroup(it) },
                         scope = lifecycleScope,
-                    ),
-                    TabGroupsStripTelemetryMiddleware(
-                        isHomepageAsNewTabEnabled = { context?.components?.settings?.enableHomepageAsNewTab ?: false }
                     ),
                 )
         )
@@ -2118,7 +2158,9 @@ abstract class BaseBrowserFragment :
     }
 
     private fun isToolbarDynamic(context: Context) =
-        !context.components.settings.shouldUseFixedTopToolbar && context.components.settings.isDynamicToolbarEnabled
+        !context.components.settings.shouldUseFixedTopToolbar &&
+            !context.isTabletInterface(context.components.settings) &&
+            context.components.settings.isDynamicToolbarEnabled
 
     /** Returns a list of context menu items [ContextMenuCandidate] for the context menu */
     protected abstract fun getContextMenuCandidates(
@@ -2253,6 +2295,17 @@ abstract class BaseBrowserFragment :
 
     @CallSuper
     override fun onBackPressed(): Boolean {
+        val currentContext = context
+        if (
+            currentContext != null &&
+            currentContext.isTabletInterface(requireComponents.settings) &&
+            requireComponents.appStore.state.searchState.isSearchActive
+        ) {
+            view?.hideKeyboard()
+            requireComponents.appStore.dispatch(SearchEnded)
+            requireComponents.core.store.dispatch(AwesomeBarAction.EngagementFinished(abandoned = true))
+            return true
+        }
         return findInPageIntegration.onBackPressed() ||
             fullScreenFeature.onBackPressed() ||
             promptsFeature.onBackPressed() ||
@@ -2581,6 +2634,7 @@ abstract class BaseBrowserFragment :
         awesomeBarComposable = null
         browserNavigationBar = null
         browserTabStrip = null
+        desktopSearchDismissOverlay = null
         blackScreenOverlay = null
         _binding = null
     }

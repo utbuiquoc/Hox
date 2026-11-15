@@ -13,6 +13,7 @@ import android.provider.Settings
 import android.view.ContextThemeWrapper
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.view.accessibility.AccessibilityManager
 import androidx.annotation.StringRes
 import java.lang.String.format
@@ -25,6 +26,7 @@ import org.mozilla.fenix.R
 import org.mozilla.fenix.components.Components
 import org.mozilla.fenix.components.toolbar.ToolbarPosition
 import org.mozilla.fenix.settings.advanced.getSelectedLocale
+import org.mozilla.fenix.utils.isLargeScreenSize
 
 /** Get the BrowserApplication object from a context. */
 val Context.application: FenixApplication
@@ -167,6 +169,15 @@ fun Context.tabsClosedUndoMessage(count: Int): String =
  * @return true if the app has a large window size akin to a tablet.
  */
 fun Context.isLargeWindow(): Boolean = AcornWindowSize.isLargeWindow(this)
+
+/**
+ * Returns true if the current UI should behave as the tablet/desktop-like interface, either
+ * because the tablet tab strip is enabled or the device/window has tablet-class dimensions.
+ */
+fun Context.isTabletInterface(settings: org.mozilla.fenix.utils.Settings): Boolean =
+    settings.isTabStripEnabled ||
+        isLargeWindow() ||
+        (getSystemService(Context.WINDOW_SERVICE) is WindowManager && isLargeScreenSize())
 
 internal const val TALL_SCREEN_HEIGHT_DP = 480
 internal const val WIDE_SCREEN_WIDTH_DP = 600

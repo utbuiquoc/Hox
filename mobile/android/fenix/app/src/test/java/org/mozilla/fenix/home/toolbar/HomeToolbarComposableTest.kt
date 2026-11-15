@@ -244,6 +244,25 @@ class HomeToolbarComposableTest {
         assertEquals(0f, searchBackgroundColor?.alpha)
     }
 
+    @Test
+    fun `GIVEN tablet interface WHEN search is active THEN searchBackgroundColor returns null`() {
+        var searchBackgroundColor: Color? = Color.Red
+        val settings: Settings = mockk(relaxed = true) {
+            every { isTabStripEnabled } returns true
+        }
+        val htc = buildHomeToolbarComposable(directToSearchConfig = DirectToSearchConfig(), settings = settings)
+
+        appStore.dispatch(SearchAction.SearchStarted())
+        composeTestRule.setContent {
+            FirefoxTheme(theme = Theme.Light) {
+                searchBackgroundColor = htc.searchBackgroundColor()
+            }
+        }
+
+        composeTestRule.waitForIdle()
+        assertNull(searchBackgroundColor)
+    }
+
     private fun buildHomeToolbarComposable(
         directToSearchConfig: DirectToSearchConfig,
         browserStore: BrowserStore = this.browserStore,

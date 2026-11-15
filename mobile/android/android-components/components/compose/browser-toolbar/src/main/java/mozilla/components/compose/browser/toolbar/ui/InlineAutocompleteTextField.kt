@@ -115,6 +115,7 @@ private const val MIN_CHAR_COUNT_FOR_MULTILINE = 10_000
  * @param onUrlEdit Callback invoked when the user types or deletes text, providing [BrowserToolbarQuery] with
  *   information about the previous and the new query.
  * @param onUrlCommitted A callback for when the user commits the text via an IME action like "Go".
+ * @param onDismiss Optional callback invoked when the user presses Escape to dismiss editing.
  */
 @OptIn(ExperimentalComposeUiApi::class) // for InterceptPlatformTextInput
 @Suppress("LongMethod", "CyclomaticComplexMethod", "CognitiveComplexMethod")
@@ -128,6 +129,7 @@ internal fun InlineAutocompleteTextField(
     modifier: Modifier = Modifier,
     onUrlEdit: (BrowserToolbarQuery) -> Unit = {},
     onUrlCommitted: (String) -> Unit = {},
+    onDismiss: (() -> Unit)? = null,
 ) {
     // Bound the editable text to a safe maximum to avoid any UX instability.
     val query = query.trimmed()
@@ -155,6 +157,7 @@ internal fun InlineAutocompleteTextField(
     val currentSuggestion by rememberUpdatedState(suggestion)
     val currentUseSuggestion by rememberUpdatedState(useSuggestion)
     val currentOnUrlEdit by rememberUpdatedState(onUrlEdit)
+    val currentOnDismiss by rememberUpdatedState(onDismiss)
 
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -326,7 +329,12 @@ internal fun InlineAutocompleteTextField(
                         }
                         .focusRequester(focusRequester)
                         .onPreviewKeyEvent { keyEvent ->
-                            if (
+                            if (currentOnDismiss != null && keyEvent.key == Key.Escape) {
+                                if (keyEvent.type == KeyEventType.KeyUp) {
+                                    currentOnDismiss?.invoke()
+                                }
+                                true
+                            } else if (
                                 keyEvent.type == KeyEventType.KeyUp &&
                                     (keyEvent.key == Key.DirectionRight || keyEvent.key == Key.MoveEnd)
                             ) {

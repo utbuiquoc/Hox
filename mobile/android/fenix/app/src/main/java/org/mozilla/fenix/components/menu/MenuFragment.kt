@@ -71,7 +71,6 @@ import org.mozilla.fenix.components.menu.configuration.BrowserMenuConfiguration
 import org.mozilla.fenix.components.menu.configuration.CustomTabMenuConfiguration
 import org.mozilla.fenix.components.menu.configuration.HomeMenuConfiguration
 import org.mozilla.fenix.components.menu.middleware.MenuMiddleware
-import org.mozilla.fenix.components.menu.middleware.MenuTelemetryMiddleware
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.isToolbarAtBottom
 import org.mozilla.fenix.ext.nav
@@ -317,7 +316,6 @@ class MenuFragment : BottomSheetDialogFragment() {
                             ),
                         scope = viewLifecycleOwner.lifecycle.coroutineScope,
                     ),
-                    MenuTelemetryMiddleware(accessPoint = args.accessPoint),
                 ),
         )
     }

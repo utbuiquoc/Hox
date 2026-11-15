@@ -49,7 +49,7 @@ class SummarizationStoreViewModel(
     currentTab: SessionState?,
     initializedFromShake: Boolean,
     pageTitle: String,
-    connectionType: ConnectionType,
+    @Suppress("UNUSED_PARAMETER") connectionType: ConnectionType,
     llmProvider: CloudLlmProvider,
     settings: SummarizationSettings,
     loadCachedSettings: () -> SummarizeSettingsState,
@@ -63,7 +63,6 @@ class SummarizationStoreViewModel(
             reducer = ::summarizationReducer,
             middleware =
                 listOf(
-                    SummarizationTelemetryMiddleware(connectionType),
                     SummarizationMiddleware(
                         isPageLoadingFlow = currentTab.asPageLoadingFlow(),
                         settings = settings,

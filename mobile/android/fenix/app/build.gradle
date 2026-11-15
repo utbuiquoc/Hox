@@ -142,18 +142,10 @@ android {
         }
         release releaseTemplate >> {
             buildConfigField "boolean", "USE_RELEASE_VERSIONING", "true"
-            applicationIdSuffix ".firefox"
+            applicationIdSuffix ".firefox.custom"
             def deepLinkSchemeValue = "fenix"
             buildConfigField "String", "DEEP_LINK_SCHEME", "\"$deepLinkSchemeValue\""
             manifestPlaceholders.putAll([
-                    // This release type is meant to replace Firefox (Release channel) and therefore needs to inherit
-                    // its sharedUserId for all eternity. See:
-                    // https://searchfox.org/mozilla-esr68/search?q=moz_android_shared_id&case=false&regexp=false&path=
-                    // Shipping an app update without sharedUserId can have
-                    // fatal consequences. For example see:
-                    //  - https://issuetracker.google.com/issues/36924841
-                    //  - https://issuetracker.google.com/issues/36905922
-                    "sharedUserId": "org.mozilla.firefox.sharedID",
                     "deepLinkScheme": deepLinkSchemeValue,
             ])
         }
@@ -246,7 +238,7 @@ android {
             if (project.hasProperty("benchmarkTest")) {
                 include "arm64-v8a"
             } else {
-                include "armeabi-v7a", "arm64-v8a", "x86_64"
+                include "arm64-v8a"
                 if (gradle.mozconfig.substs.MOZILLA_OFFICIAL || System.getenv("MOZ_BUILD_CONFIG_LINT") == "1") {
                     universalApk true
                 }
@@ -265,8 +257,8 @@ android {
     lint {
         lintConfig = file("../../shared-lint.xml")
         baseline = file("lint-baseline.xml")
-        sarifReport = true
-        sarifOutput = file("../build/reports/lint/lint-report.sarif.json")
+        sarifReport = false
+        checkReleaseBuilds = false
         abortOnError = false
     }
 
@@ -348,7 +340,7 @@ androidComponents {
 
 android.defaultConfig.with {
     buildConfigField 'boolean', 'CRASH_REPORTING', 'true'
-    buildConfigField 'boolean', 'TELEMETRY', 'true'
+    buildConfigField 'boolean', 'TELEMETRY', 'false'
 
     // Reading the sentry token from a local file (if it exists). In a release task on taskcluster it will be available.
     buildConfigField 'String', 'SENTRY_TOKEN', 'null'

@@ -197,7 +197,7 @@ class TabGroupFlowFragment : DialogFragment() {
                                 homepageAsNewTabEnabled = settings.enableHomepageAsNewTab,
                             )
                     ) ?: createInitialState(settings = settings, args = args),
-                middlewares = listOf(TabGroupFlowTelemetryMiddleware()),
+                middlewares = emptyList(),
             )
         }
     }
