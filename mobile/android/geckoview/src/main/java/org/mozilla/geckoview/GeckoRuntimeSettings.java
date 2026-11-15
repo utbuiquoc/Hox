@@ -835,7 +835,7 @@ public final class GeckoRuntimeSettings extends RuntimeSettings {
   /* package */ final Pref<Boolean> mFetchPriorityEnabled =
       new Pref<Boolean>("network.fetchpriority.enabled", false);
   /* package */ final Pref<Boolean> mParallelMarkingEnabled =
-      new Pref<Boolean>("javascript.options.mem.gc_parallel_marking", false);
+      new Pref<Boolean>("javascript.options.mem.gc_parallel_marking", true);
   /* package */ final Pref<Boolean> mCookieBehaviorOptInPartitioning =
       new Pref<Boolean>("network.cookie.cookieBehavior.optInPartitioning", false);
   /* package */ final Pref<Boolean> mCookieBehaviorOptInPartitioningPBM =

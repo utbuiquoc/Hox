@@ -28,7 +28,74 @@
 #include "prenv.h"
 #include "prsystem.h"
 
+#ifdef MOZ_WIDGET_ANDROID
+#  include <errno.h>
+#  include <sched.h>
+#  include <sys/resource.h>
+#  include "mozilla/AndroidCpuPinning.h"
+#  include "nsXULAppAPI.h"
+#endif
+
 namespace mozilla {
+
+#ifdef MOZ_WIDGET_ANDROID
+namespace {
+
+struct AndroidCpuAffinityConfig {
+  bool mIsSinglePrimeSoc = false;
+  SinglePrimeCpusets mCpusets;
+
+  AndroidCpuAffinityConfig() {
+    mIsSinglePrimeSoc = GetSinglePrimeCpusets(&mCpusets);
+  }
+};
+
+static const AndroidCpuAffinityConfig& GetAndroidCpuAffinityConfig() {
+  static const AndroidCpuAffinityConfig sConfig;
+  return sConfig;
+}
+
+// Primary pool slots (#0..#3) run on physical Medium cores; overflow slots
+// (#4..#7) allow E+Medium cores so burst background work uses 0-9 without
+// queueing behind latency-critical Stylo/IPC/Render threads on 4-9.
+static constexpr size_t kPrimaryMediumWorkerLimit = 4;
+
+}  // namespace
+
+void PinCurrentWorkerThreadOffPrime(bool aOnlyIfOutsideTargetCpuset,
+                                     size_t aPoolIndex) {
+  if (!XRE_IsContentProcess()) {
+    return;
+  }
+  // ContentChild raises the content main thread's nice value to -8; reset any
+  // inherited priority on worker pool threads so they do not preempt
+  // VSync/IPC/Renderer/Compositor threads.
+  static thread_local bool sNormalizedNice = false;
+  if (!sNormalizedNice) {
+    errno = 0;
+    int niceVal = getpriority(PRIO_PROCESS, 0);
+    if (errno == 0 && niceVal < 0) {
+      setpriority(PRIO_PROCESS, 0, 0);
+    }
+    sNormalizedNice = true;
+  }
+  const auto& cfg = GetAndroidCpuAffinityConfig();
+  if (!cfg.mIsSinglePrimeSoc) {
+    return;
+  }
+  const cpu_set_t& targetCpuset = (aPoolIndex < kPrimaryMediumWorkerLimit)
+                                      ? cfg.mCpusets.mMedium
+                                      : cfg.mCpusets.mNonPrime;
+  if (aOnlyIfOutsideTargetCpuset) {
+    // Compare full affinity masks rather than only sched_getcpu(): ContentChild
+    // may initially pin pool #4..#7 to mMedium (4-9), a strict subset of
+    // mNonPrime (0-9), which a single-CPU check would fail to widen.
+    PinThreadIfDrifted(0, targetCpuset);
+    return;
+  }
+  sched_setaffinity(0, sizeof(cpu_set_t), &targetCpuset);
+}
+#endif
 
 StaticAutoPtr<TaskController> TaskController::sSingleton;
 
@@ -458,9 +525,14 @@ void TaskController::RunPoolThread(PoolThread* aThread) {
   IOInterposer::RegisterCurrentThread();
 
   nsAutoCString threadName;
-  threadName.AppendLiteral("TaskController #");
+  threadName.AppendLiteral("TaskCtrl #");
   threadName.AppendInt(static_cast<int64_t>(aThread->mIndex));
   AUTO_PROFILER_REGISTER_THREAD(threadName.get());
+
+#ifdef MOZ_WIDGET_ANDROID
+  PinCurrentWorkerThreadOffPrime(/* aOnlyIfOutsideTargetCpuset */ false,
+                                 aThread->mIndex);
+#endif
 
   MutexAutoLock lock(mGraphMutex);
   while (!mShuttingDown) {
@@ -475,6 +547,10 @@ void TaskController::RunPoolThread(PoolThread* aThread) {
 
     {
       MutexAutoUnlock unlock(mGraphMutex);
+#ifdef MOZ_WIDGET_ANDROID
+      PinCurrentWorkerThreadOffPrime(/* aOnlyIfOutsideTargetCpuset */ true,
+                                     aThread->mIndex);
+#endif
       taskCompleted = RunTask(task) == Task::TaskResult::Complete;
     }
 

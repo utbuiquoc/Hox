@@ -908,7 +908,7 @@ pref("javascript.options.mem.gc_experimental_semispace_nursery", false);
 #ifndef ANDROID
 pref("javascript.options.mem.gc_parallel_marking", true);
 #else
-pref("javascript.options.mem.gc_parallel_marking", false);
+pref("javascript.options.mem.gc_parallel_marking", true);
 #endif
 
 // JSGC_PARALLEL_MARKING_THRESHOLD_MB

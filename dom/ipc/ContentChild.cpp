@@ -237,8 +237,10 @@
 
 #if defined(MOZ_WIDGET_ANDROID)
 #  include <sched.h>
+#  include <sys/resource.h>
 
 #  include "APKOpen.h"
+#  include "mozilla/AndroidCpuPinning.h"
 #endif
 
 #ifdef XP_WIN
@@ -2739,6 +2741,12 @@ mozilla::ipc::IPCResult ContentChild::RecvSetRemoteType(
   }
   loadedOrigins->SetRemoteType(mRemoteType);
 
+#ifdef MOZ_WIDGET_ANDROID
+  if (mProcessPriority >= hal::PROCESS_PRIORITY_FOREGROUND) {
+    ConfigureThreadPerformanceHints(mProcessPriority);
+  }
+#endif
+
   // Update the process name so about:memory's process names are more obvious.
   if (aRemoteType.IsFile()) {
     SetProcessName("file:// Content"_ns, nullptr, &aProfile);
@@ -4870,6 +4878,96 @@ IPCResult ContentChild::RecvUpdateMediaCodecsSupported(
   return IPC_OK();
 }
 
+#ifdef MOZ_WIDGET_ANDROID
+static uint64_t sAffinityGeneration = 0;
+static bool sRaisedMainThreadPriority = false;
+
+static void PinContentNonMainThreads(const mozilla::SinglePrimeCpusets& aCpusets,
+                                     pid_t aAllowedPrimeTid, bool aFullScan) {
+  using mozilla::PinCpuGroup;
+  using mozilla::ThreadPinRule;
+  // Prioritize latency-sensitive IPC/parser/socket bridges above prio-120
+  // batch workers (TaskController/StyleThread) while keeping all non-main
+  // threads subordinate to Isolated Web Co (nice -8, prio 112). Preserve
+  // TaskController #4..#7's NonPrime (0-9) spill placement once off-Prime.
+  static constexpr ThreadPinRule kContentRules[] = {
+      {"IPC I/O Child", PinCpuGroup::Medium, -5},
+      {"HTML5 Parser", PinCpuGroup::Medium, -2},
+      {"Socket Thread", PinCpuGroup::Medium, -2},
+      {"StyleThread#", PinCpuGroup::Medium, 0},
+      {"TaskCtrl #0", PinCpuGroup::Medium, 0},
+      {"TaskCtrl #1", PinCpuGroup::Medium, 0},
+      {"TaskCtrl #2", PinCpuGroup::Medium, 0},
+      {"TaskCtrl #3", PinCpuGroup::Medium, 0},
+      {"TaskCtrl #", PinCpuGroup::NonPrime, 0},
+      {"TaskController ", PinCpuGroup::Medium, 0, true},
+      {"ImageBridgeChld", PinCpuGroup::Medium, 0},
+      {"ImageIO", PinCpuGroup::Medium, 0},
+      {"RemVidChild", PinCpuGroup::Medium, 0},
+      {"DOM Worker", PinCpuGroup::Medium, 0},
+  };
+  const int normalizeNice = (aAllowedPrimeTid > 0) ? -8 : 0;
+  mozilla::PinSelfThreadsOffPrime(
+      aCpusets, kContentRules,
+      sizeof(kContentRules) / sizeof(kContentRules[0]), aAllowedPrimeTid,
+      aFullScan, normalizeNice);
+}
+
+static void ScheduleAffinityKeeper(uint64_t aGeneration, uint32_t aAttempt,
+                                   const cpu_set_t& aMainCpuset,
+                                   const mozilla::SinglePrimeCpusets& aCpusets,
+                                   pid_t aAllowedPrimeTid);
+
+static void MaintainContentThreadAffinities(
+    uint64_t aGeneration, uint32_t aAttempt, const cpu_set_t& aMainCpuset,
+    const mozilla::SinglePrimeCpusets& aCpusets, pid_t aAllowedPrimeTid) {
+  if (aGeneration != sAffinityGeneration) {
+    return;
+  }
+  ContentChild* cc = ContentChild::GetSingleton();
+  if (!cc || cc->IsShuttingDown() || !cc->IsAlive() ||
+      cc->GetProcessPriority() < hal::PROCESS_PRIORITY_FOREGROUND ||
+      AppShutdown::IsInOrBeyond(ShutdownPhase::AppShutdownConfirmed)) {
+    return;
+  }
+
+  const bool mainDrifted = mozilla::PinThreadIfDrifted(0, aMainCpuset);
+  if (aAllowedPrimeTid > 0 &&
+      (mainDrifted || getpriority(PRIO_PROCESS, 0) > -12)) {
+    setpriority(PRIO_PROCESS, 0, -12);
+  }
+
+  const bool fullScan = (aAttempt <= 3) || (aAttempt % 5 == 0) || mainDrifted;
+  if (fullScan) {
+    nsTArray<PlatformThreadHandle> styloThreads;
+    Servo_ThreadPool_GetThreadHandles(&styloThreads);
+    for (pthread_t thread : styloThreads) {
+      sched_setaffinity(pthread_gettid_np(thread), sizeof(cpu_set_t),
+                        &aCpusets.mMedium);
+    }
+  }
+  PinContentNonMainThreads(aCpusets, aAllowedPrimeTid, fullScan);
+
+  ScheduleAffinityKeeper(aGeneration, aAttempt + 1, aMainCpuset, aCpusets,
+                         aAllowedPrimeTid);
+}
+
+static void ScheduleAffinityKeeper(uint64_t aGeneration, uint32_t aAttempt,
+                                   const cpu_set_t& aMainCpuset,
+                                   const mozilla::SinglePrimeCpusets& aCpusets,
+                                   pid_t aAllowedPrimeTid) {
+  const uint32_t delayMs = (aAttempt < 2) ? 200 : 2000;
+  (void)NS_DelayedDispatchToCurrentThread(
+      NS_NewRunnableFunction(
+          "ContentChild::MaintainCpuAffinity",
+          [aGeneration, aAttempt, aMainCpuset, aCpusets, aAllowedPrimeTid]() {
+            MaintainContentThreadAffinities(aGeneration, aAttempt, aMainCpuset,
+                                            aCpusets, aAllowedPrimeTid);
+          }),
+      delayMs);
+}
+#endif
+
 void ContentChild::ConfigureThreadPerformanceHints(
     const hal::ProcessPriority& aPriority) {
   if (aPriority >= hal::PROCESS_PRIORITY_FOREGROUND) {
@@ -4903,37 +5001,41 @@ void ContentChild::ConfigureThreadPerformanceHints(
       if (const auto& cpuInfo = hal::GetHeterogeneousCpuInfo()) {
         // If CPUs are homogeneous there is no point setting affinity.
         if (cpuInfo->mBigCpus.Count() != cpuInfo->mTotalNumCpus) {
-          BitSet<hal::HeterogeneousCpuInfo::MAX_CPUS> cpus = cpuInfo->mBigCpus;
-          if (cpus.Count() < 2) {
+          const bool singlePrimeSoc = mozilla::IsSinglePrimeSoc(*cpuInfo);
+          const bool isBackgroundRole =
+              mRemoteType.IsExtension() || mRemoteType.IsPrealloc();
+          const bool isolatePrimeForMain = singlePrimeSoc && !isBackgroundRole;
+
+          BitSet<hal::HeterogeneousCpuInfo::MAX_CPUS> styloCpus =
+              cpuInfo->mBigCpus;
+          if (singlePrimeSoc && isBackgroundRole) {
+            // Keep WebExtensions / preallocated helper processes off Prime.
+            styloCpus = cpuInfo->mLittleCpus;
+            styloCpus |= cpuInfo->mMediumCpus;
+          } else if (isolatePrimeForMain) {
+            // Span all 3 physical Medium cores (e.g. Kirin 9020A cpu4-9) so
+            // policy4 cpufreq boosts via cpu7 and all 3 StyleThreads run in
+            // parallel.
+            styloCpus = cpuInfo->mMediumCpus;
+          } else if (styloCpus.Count() < 2) {
             // From testing on a variety of devices it appears using only the
             // big cores gives best performance when there are 2 or more big
             // cores. If there are fewer than 2 big cores then additionally
             // using the medium cores performs better.
-            cpus |= cpuInfo->mMediumCpus;
+            styloCpus |= cpuInfo->mMediumCpus;
           }
 
-          static_assert(
-              hal::HeterogeneousCpuInfo::MAX_CPUS <= CPU_SETSIZE,
-              "HeterogeneousCpuInfo::MAX_CPUS is too large for CPU_SETSIZE");
+          cpu_set_t styloCpuset = mozilla::BuildCpuSetFromBitSet(
+              styloCpus, cpuInfo->mTotalNumCpus);
 
-          cpu_set_t cpuset;
-          CPU_ZERO(&cpuset);
-          for (size_t i = 0; i < cpuInfo->mTotalNumCpus; i++) {
-            if (cpus.test(i)) {
-              CPU_SET(i, &cpuset);
-            }
-          }
-
-          // Only set the affinity for the stylo threads, not the main thread.
-          // Testing showed no difference in performance between the two
-          // options, and as newly spawned threads automatically inherit their
-          // parent's affinity mask there may be unintended consequences to
-          // setting the main thread affinity.
+          // Pin the stylo worker threads immediately; on single-Prime SoCs also
+          // restore affinities in case HarmonyOS cpuset transitions
+          // (/vip <-> /top-app) reset masks.
           nsTArray<PlatformThreadHandle> threads;
           Servo_ThreadPool_GetThreadHandles(&threads);
           for (pthread_t thread : threads) {
             int ret = sched_setaffinity(pthread_gettid_np(thread),
-                                        sizeof(cpu_set_t), &cpuset);
+                                        sizeof(cpu_set_t), &styloCpuset);
             // Occasionally sched_setaffinity fails, presumably due to a race
             // between us receiving the process foreground signal and whatever
             // is responsible for restricting which processes can use certain
@@ -4942,14 +5044,55 @@ void ContentChild::ConfigureThreadPerformanceHints(
             if (ret < 0) {
               NS_DispatchToCurrentThread(NS_NewRunnableFunction(
                   "ContentChild::ConfigureThreadPerformanceHints",
-                  [threads = std::move(threads), cpuset] {
+                  [threads = std::move(threads), styloCpuset] {
                     for (pthread_t thread : threads) {
                       sched_setaffinity(pthread_gettid_np(thread),
-                                        sizeof(cpu_set_t), &cpuset);
+                                        sizeof(cpu_set_t), &styloCpuset);
                     }
                   }));
               break;
             }
+          }
+
+          mozilla::SinglePrimeCpusets cpusets;
+          if (singlePrimeSoc && mozilla::GetSinglePrimeCpusets(&cpusets)) {
+            cpu_set_t mainCpuset = cpusets.mNonPrime;
+            pid_t allowedPrimeTid = 0;
+            if (isolatePrimeForMain) {
+              BitSet<hal::HeterogeneousCpuInfo::MAX_CPUS> mainCpus =
+                  cpuInfo->mBigCpus;
+              // Huawei's Kirin 9020A kernel rewrites a solo-Prime mask
+              // (0xc00 = {10, 11}) to 4-11 (which includes fake-1024 cpu7).
+              // Including the highest Medium core (e.g. cpu9 @ 2.002 GHz,
+              // cap=718) yields allowed=9-11 without widening to 4-8, keeping
+              // busy work on Prime (10-11, 2.40 GHz) while preventing any
+              // fallback onto slow 1.60 GHz Little E-cores (cpu0, cap=260).
+              bool addedAnchor = false;
+              for (size_t i = cpuInfo->mTotalNumCpus; i > 0; --i) {
+                if (cpuInfo->mMediumCpus.test(i - 1)) {
+                  mainCpus[i - 1] = true;
+                  addedAnchor = true;
+                  break;
+                }
+              }
+              if (!addedAnchor && cpuInfo->mLittleCpus.test(0)) {
+                mainCpus[0] = true;
+              }
+              mainCpuset = mozilla::BuildCpuSetFromBitSet(
+                  mainCpus, cpuInfo->mTotalNumCpus);
+              allowedPrimeTid =
+                  static_cast<pid_t>(pthread_gettid_np(pthread_self()));
+              // Give the main JS thread higher CFS priority (nice -12, prio 108)
+              // so it stays above AndroidUI (110) and GPU/IPC/binder threads.
+              if (setpriority(PRIO_PROCESS, 0, -12) == 0) {
+                sRaisedMainThreadPriority = true;
+              }
+            }
+            sched_setaffinity(0, sizeof(cpu_set_t), &mainCpuset);
+            PinContentNonMainThreads(cpusets, allowedPrimeTid,
+                                     /* aFullScan = */ true);
+            ScheduleAffinityKeeper(++sAffinityGeneration, 0, mainCpuset,
+                                   cpusets, allowedPrimeTid);
           }
         }
       }
@@ -4957,6 +5100,21 @@ void ContentChild::ConfigureThreadPerformanceHints(
 #endif
   } else {
     mPerformanceHintSession = nullptr;
+#ifdef MOZ_WIDGET_ANDROID
+    ++sAffinityGeneration;
+    if (sRaisedMainThreadPriority) {
+      setpriority(PRIO_PROCESS, 0, 0);
+      sRaisedMainThreadPriority = false;
+    }
+    mozilla::SinglePrimeCpusets cpusets;
+    if (mozilla::GetSinglePrimeCpusets(&cpusets)) {
+      mozilla::PinThreadIfDrifted(0, cpusets.mNonPrime);
+      mozilla::PinSelfThreadsOffPrime(cpusets, nullptr, 0,
+                                      /* aAllowedPrimeTid = */ 0,
+                                      /* aFullScan = */ true,
+                                      /* aNormalizeNiceEquals = */ -8);
+    }
+#endif
   }
 }
 

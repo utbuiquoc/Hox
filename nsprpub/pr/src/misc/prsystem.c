@@ -190,10 +190,15 @@ PR_GetNumberOfProcessors(void)
     /* for the benefit of devices with advanced power-saving, that
        actually hotplug their cpus in heavy load, try to figure out
        the real number of CPUs */
+    static PRInt32 cachedNumCpus = 0;
+    PRInt32 cached = __atomic_load_n(&cachedNumCpus, __ATOMIC_RELAXED);
     char buf[MAX_LINE];
     FILE* fin;
     const char* cpu_present = "/sys/devices/system/cpu/present";
     size_t strsize;
+    if (cached > 0) {
+        return cached;
+    }
     numCpus = 0;
     fin = fopen(cpu_present, "r");
     if (fin != NULL) {
@@ -218,6 +223,23 @@ PR_GetNumberOfProcessors(void)
     /* if that fails, fall back to more standard methods */
     if (!numCpus) {
         numCpus = sysconf(_SC_NPROCESSORS_CONF);
+    }
+    /* Huawei Kirin 9020A / HarmonyOS spoofs /sys/devices/system/cpu/present as
+       "0-7" while cpu8..cpu11 exist in sysfs. Probe actual cpuN directories. */
+    if (numCpus > 0 && numCpus < 32) {
+        char cpu_dir[64];
+        while (numCpus < 32) {
+            PR_snprintf(cpu_dir, sizeof(cpu_dir),
+                        "/sys/devices/system/cpu/cpu%d", numCpus);
+            if (access(cpu_dir, F_OK) == 0) {
+                numCpus++;
+            } else {
+                break;
+            }
+        }
+    }
+    if (numCpus > 0) {
+        __atomic_store_n(&cachedNumCpus, numCpus, __ATOMIC_RELAXED);
     }
 #elif defined(XP_UNIX)
     numCpus = sysconf(_SC_NPROCESSORS_CONF);

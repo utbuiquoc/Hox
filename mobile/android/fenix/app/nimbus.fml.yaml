@@ -808,7 +808,7 @@ features:
         description: >
           Enables or disables javascript.options.mem.gc_parallel_marking preference.
         type: Boolean
-        default: false
+        default: true
 
   enable-popups:
     description: A feature that enables or disables in app popups

@@ -26,8 +26,13 @@ mozilla::Maybe<HeterogeneousCpuInfo> CreateHeterogeneousCpuInfo() {
     return Nothing();
   }
 
-  std::vector<std::pair<int, int>> cpu_freqs;
-  cpu_freqs.reserve(cpuCount.value());
+  struct CpuEntry {
+    size_t cpu;
+    int freq;
+    int pkg;
+  };
+  std::vector<CpuEntry> cpu_entries;
+  cpu_entries.reserve(cpuCount.value());
   for (size_t i = 0; i < cpuCount.value(); i++) {
     std::stringstream freq_filename;
     // On all devices tested, even with isolated content processes we do have
@@ -47,7 +52,37 @@ mozilla::Maybe<HeterogeneousCpuInfo> CreateHeterogeneousCpuInfo() {
               freq_filename.str().c_str());
       return Nothing();
     }
-    cpu_freqs.push_back(std::make_pair(i, freq));
+    int pkg = -1;
+    std::stringstream pkg_filename;
+    pkg_filename << "/sys/devices/system/cpu/cpu" << i
+                 << "/topology/physical_package_id";
+    std::ifstream pkg_ifs(pkg_filename.str());
+    if (pkg_ifs) {
+      pkg_ifs >> pkg;
+    }
+    cpu_entries.push_back({i, freq, pkg});
+  }
+
+  // Normalize spoofed per-thread max_freq outliers within the same physical
+  // package (e.g. Kirin 9020A spoofs cpu7 in pkg 1 to 2400000 kHz while its
+  // sibling cpu6 and the rest of pkg 1 report 2002000 kHz).
+  for (auto& entry : cpu_entries) {
+    if (entry.pkg >= 0) {
+      int pkg_min_freq = entry.freq;
+      for (const auto& other : cpu_entries) {
+        if (other.pkg == entry.pkg && other.freq < pkg_min_freq) {
+          pkg_min_freq = other.freq;
+        }
+      }
+      entry.freq = pkg_min_freq;
+    }
+  }
+
+  std::vector<std::pair<int, int>> cpu_freqs;
+  cpu_freqs.reserve(cpu_entries.size());
+  for (const auto& entry : cpu_entries) {
+    cpu_freqs.push_back(
+        std::make_pair(static_cast<int>(entry.cpu), entry.freq));
   }
 
   std::sort(cpu_freqs.begin(), cpu_freqs.end(),

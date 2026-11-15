@@ -36,6 +36,9 @@ SOURCES += [
 ]
 
 if CONFIG["MOZ_WIDGET_TOOLKIT"] == "android":
+    EXPORTS.mozilla += [
+        "android/AndroidCpuPinning.h",
+    ]
     LOCAL_INCLUDES += [
         "/widget/android",
     ]

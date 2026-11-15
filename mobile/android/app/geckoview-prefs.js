@@ -387,3 +387,27 @@ pref("xpinstall.whitelist.fileRequest", false);
 pref("browser.ipProtection.enabled", true);
 pref("browser.ipProtection.guardian.endpoint", "https://vpn.mozilla.org/");
 pref("toolkit.ipProtection.android.authProvider", "fxa");
+
+// Kirin 9020A (Taishan SMT) + Maleoon 920 TBDR Native Performance Defaults
+pref("gfx.webrender.all", true);
+pref("gfx.webrender.compositor", false);
+pref("gfx.webrender.precache-shaders", false);
+pref("gfx.webrender.program-binary-disk", true);
+pref("gfx.canvas.accelerated", true);
+pref("gfx.canvas.accelerated.cache-items", 8192);
+pref("gfx.canvas.accelerated.cache-size", 512);
+pref("dom.webgpu.enabled", true);
+pref("media.mediasource.vp9.enabled", true);
+pref("media.av1.enabled", true);
+pref("layers.async-pan-zoom.enabled", true);
+pref("apz.fling_min_velocity_threshold", "0.01");
+pref("javascript.options.ion.offthread_compilation", true);
+pref("javascript.options.baselinejit.offthread_compilation", true);
+pref("dom.workers.maxPerDomain", 16);
+
+// Enable Desktop SpiderMonkey Parallel GC marking (disabled by default only on Android)
+// + faster JS bytecode caching without delaying major GC thresholds
+pref("javascript.options.mem.gc_parallel_marking", true);
+pref("javascript.options.mem.gc_parallel_marking_threshold_mb", 8);
+pref("dom.script_loader.bytecode_cache.strategy", 1);
+pref("dom.script_loader.external_scripts.speculate_async.enabled", true);

@@ -1745,8 +1745,18 @@ impl RenderTask {
                         )
                         .scale(render_to_device_scale, render_to_device_scale);
 
+                    let pre_scale = BlurTask::downscale_factor(
+                        adjusted_blur_task_size,
+                        adjusted_blur_std_deviation,
+                    ).min(4.0);
+                    let pre_scaled_blur_size = (adjusted_blur_task_size / pre_scale)
+                        .round()
+                        .max(DeviceSize::new(1.0, 1.0))
+                        .to_i32();
+                    let pre_scaled_std_deviation = adjusted_blur_std_deviation / pre_scale;
+
                     let input_subregion_task_id = rg_builder.add().init(RenderTask::new_dynamic(
-                        adjusted_blur_task_size.to_i32(),
+                        pre_scaled_blur_size,
                         RenderTaskKind::SVGFENode(
                             SVGFEFilterTask{
                                 node: FilterGraphNode{
@@ -1772,12 +1782,12 @@ impl RenderTask {
                     // does not matter, but when they use the RGB it matters.
                     let blur_task_id =
                         RenderTask::new_blur(
-                            adjusted_blur_std_deviation,
+                            pre_scaled_std_deviation,
                             input_subregion_task_id,
                             rg_builder,
                             RenderTargetKind::Color,
                             None,
-                            adjusted_blur_task_size.to_i32(),
+                            pre_scaled_blur_size,
                             BlurEdgeMode::Duplicate,
                         );
 

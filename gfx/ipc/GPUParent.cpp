@@ -95,11 +95,86 @@
 #  include "mozilla/layers/AndroidImageReader.h"
 #  include "skia/include/ports/SkTypeface_cairo.h"
 #endif
+#ifdef MOZ_WIDGET_ANDROID
+#  include <sched.h>
+#  include <atomic>
+
+#  include "mozilla/AndroidCpuPinning.h"
+#  include "nsThreadUtils.h"
+#endif
 #include "ChildProfilerController.h"
 #include "nsAppRunner.h"
 
 #if defined(MOZ_SANDBOX) && defined(MOZ_DEBUG) && defined(ENABLE_TESTS)
 #  include "mozilla/SandboxTestingChild.h"
+#endif
+
+#if defined(MOZ_WIDGET_ANDROID)
+namespace {
+
+static std::atomic<uint64_t> sGpuAffinityGeneration{0};
+
+static void PinGpuHelperThreads(const mozilla::SinglePrimeCpusets& aCpusets,
+                                bool aFullScan) {
+  using mozilla::kPreserveNice;
+  using mozilla::PinCpuGroup;
+  using mozilla::ThreadPinRule;
+  // Let WebRender composite/GL-submit threads use Medium+Prime (4-11, no
+  // E-cores) with elevated CFS priority (-5 / -4, still below Isolated Web
+  // Co nice -8) to hit 120Hz VSync deadlines without preempting JS. Keep
+  // CanvasRenderer (-4), IPC (-5), WRSceneBuilder# (-3), WRWorker#, and RT
+  // GPU driver threads on Medium (4-9), while letting WRWorkerLP#0..7 and
+  // Timers spill to NonPrime (0-9) E-cores.
+  static constexpr ThreadPinRule kGpuRules[] = {
+      {"Compositor", PinCpuGroup::Medium, -5},
+      {"WRRenderBackend", PinCpuGroup::Medium, -5},
+      {"Renderer", PinCpuGroup::Medium, -4},
+      {"IPC I/O Child", PinCpuGroup::Medium, -5},
+      {"CanvasRenderer", PinCpuGroup::Medium, -4},
+      {"WRSceneBuilder#", PinCpuGroup::Medium, -3},
+      {"WRSceneBuilderL", PinCpuGroup::Medium, 0},
+      {"WRWorker#", PinCpuGroup::Medium, 0},
+      {"GPU Process", PinCpuGroup::Medium, 0},
+      {"WrGlyphRasteriz", PinCpuGroup::Medium, 0},
+      {"gpu-work-", PinCpuGroup::Medium, kPreserveNice},
+      {"gpu-mem-", PinCpuGroup::Medium, kPreserveNice},
+      {"OS_BiShengGPU", PinCpuGroup::Medium, kPreserveNice},
+  };
+  mozilla::PinSelfThreadsOffPrime(
+      aCpusets, kGpuRules, sizeof(kGpuRules) / sizeof(kGpuRules[0]),
+      /* aAllowedPrimeTid = */ 0, aFullScan, /* aNormalizeNiceEquals = */ 0);
+}
+
+static void ScheduleGpuAffinityKeeper(
+    uint64_t aGeneration, uint32_t aAttempt,
+    const mozilla::SinglePrimeCpusets& aCpusets);
+
+static void MaintainGpuThreadAffinities(
+    uint64_t aGeneration, uint32_t aAttempt,
+    const mozilla::SinglePrimeCpusets& aCpusets) {
+  if (aGeneration != sGpuAffinityGeneration.load()) {
+    return;
+  }
+  const bool mainDrifted = mozilla::PinThreadIfDrifted(0, aCpusets.mMedium);
+  const bool fullScan = (aAttempt <= 3) || (aAttempt % 5 == 0) || mainDrifted;
+  PinGpuHelperThreads(aCpusets, fullScan);
+  ScheduleGpuAffinityKeeper(aGeneration, aAttempt + 1, aCpusets);
+}
+
+static void ScheduleGpuAffinityKeeper(
+    uint64_t aGeneration, uint32_t aAttempt,
+    const mozilla::SinglePrimeCpusets& aCpusets) {
+  const uint32_t delayMs = (aAttempt < 2) ? 200 : 2000;
+  (void)NS_DelayedDispatchToCurrentThread(
+      NS_NewRunnableFunction("GPUParent::MaintainCpuAffinity",
+                             [aGeneration, aAttempt, aCpusets]() {
+                               MaintainGpuThreadAffinities(
+                                   aGeneration, aAttempt, aCpusets);
+                             }),
+      delayMs);
+}
+
+}  // namespace
 #endif
 
 namespace mozilla::gfx {
@@ -207,6 +282,14 @@ bool GPUParent::Init(mozilla::ipc::UntypedEndpoint&& aEndpoint,
 
 #if defined(XP_WIN) || defined(XP_MACOSX)
   CompositeProcessFencesHolderMap::Init();
+#endif
+
+#ifdef MOZ_WIDGET_ANDROID
+  mozilla::SinglePrimeCpusets gpuCpusets;
+  if (mozilla::GetSinglePrimeCpusets(&gpuCpusets)) {
+    mozilla::PinThreadIfDrifted(0, gpuCpusets.mMedium);
+    PinGpuHelperThreads(gpuCpusets, /* aFullScan = */ true);
+  }
 #endif
 
   CompositorThreadHolder::Start();
@@ -406,8 +489,21 @@ mozilla::ipc::IPCResult GPUParent::RecvInit(
 #endif
 
   // Make sure to do this *after* we update gfxVars above.
+#ifdef MOZ_WIDGET_ANDROID
+  mozilla::SinglePrimeCpusets gpuCpusets;
+  const bool hasGpuCpusets = mozilla::GetSinglePrimeCpusets(&gpuCpusets);
+  if (hasGpuCpusets) {
+    mozilla::PinThreadIfDrifted(0, gpuCpusets.mMedium);
+    PinGpuHelperThreads(gpuCpusets, /* aFullScan = */ true);
+  }
+#endif
   wr::RenderThread::Start(aWrNamespace);
   gfx::CanvasRenderThread::Start();
+#ifdef MOZ_WIDGET_ANDROID
+  if (hasGpuCpusets) {
+    ScheduleGpuAffinityKeeper(++sGpuAffinityGeneration, 0, gpuCpusets);
+  }
+#endif
   image::ImageMemoryReporter::InitForWebRender();
 
   // Since gfxPlatform::Init is never called for the GPU process, ensure that
@@ -738,6 +834,9 @@ mozilla::ipc::IPCResult GPUParent::RecvCrashProcess() {
 }
 
 void GPUParent::ActorDestroy(ActorDestroyReason aWhy) {
+#ifdef MOZ_WIDGET_ANDROID
+  ++sGpuAffinityGeneration;
+#endif
   if (AbnormalShutdown == aWhy) {
     NS_WARNING("Shutting down GPU process early due to a crash!");
     ProcessChild::QuickExit();

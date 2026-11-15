@@ -86,7 +86,7 @@ void main(void) {
     //
     // TODO(pcwalton): Actually make use of this fact and use the texture
     // hardware for linear filtering.
-    vSupport.x = int(ceil(1.5 * blur_task.blur_radius)) * 2;
+    vSupport.x = int(ceil(1.25 * blur_task.blur_radius)) * 2;
     vSupport.y = aBlurEdgeMode;
 
     if (vSupport.x > 0) {

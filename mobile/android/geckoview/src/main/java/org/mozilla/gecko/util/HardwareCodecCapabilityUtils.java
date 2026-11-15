@@ -24,7 +24,8 @@ public final class HardwareCodecCapabilityUtils {
   private static final String[] supportedVp8HwEncCodecPrefixes = {"OMX.qcom.", "OMX.Intel."};
   // List of supported HW VP8 decoders.
   private static final String[] supportedVp8HwDecCodecPrefixes = {
-    "OMX.qcom.", "OMX.Nvidia.", "OMX.Exynos.", "c2.exynos", "OMX.Intel."
+    "OMX.qcom.", "OMX.Nvidia.", "OMX.Exynos.", "c2.exynos", "OMX.Intel.",
+    "OMX.hisi.", "c2.hisi."
   };
   private static final String VP8_MIME_TYPE = "video/x-vnd.on2.vp8";
   // List of supported HW VP9 codecs.
@@ -36,7 +37,9 @@ public final class HardwareCodecCapabilityUtils {
     "OMX.amlogic.",
     "OMX.MTK.",
     "OMX.Nvidia.",
-    "OMX.rk."
+    "OMX.rk.",
+    "OMX.hisi.",
+    "c2.hisi."
   };
   private static final String VP9_MIME_TYPE = "video/x-vnd.on2.vp9";
   // List of supported HW AV1/HEVC/H.264 codecs.
@@ -50,6 +53,7 @@ public final class HardwareCodecCapabilityUtils {
     "OMX.IMG.",
     "OMX.k3.",
     "OMX.hisi.",
+    "c2.hisi.",
     "OMX.TI.",
     "OMX.MTK.",
     "OMX.allwinner.",

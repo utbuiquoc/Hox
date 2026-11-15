@@ -6,6 +6,7 @@
 
 #include <android/log.h>
 #include <pthread.h>
+#include <unistd.h>
 
 #include "AndroidBridge.h"
 #include "AndroidBridgeUtilities.h"
@@ -14,6 +15,7 @@
 #include "base/message_loop.h"
 #include "base/task.h"
 #include "gfxConfig.h"
+#include "mozilla/AndroidCpuPinning.h"
 #include "mozilla/AppShutdown.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/Components.h"
@@ -111,6 +113,85 @@ class WakeLockListener final : public nsIDOMMozWakeLockListener {
 NS_IMPL_ISUPPORTS(WakeLockListener, nsIDOMMozWakeLockListener)
 constinit nsCOMPtr<nsIPowerManagerService> sPowerManagerService{};
 StaticRefPtr<WakeLockListener> sWakeLockListener;
+
+static uint64_t sParentAffinityGeneration = 0;
+
+static void PinParentThreads(const mozilla::SinglePrimeCpusets& aCpusets,
+                             bool aFullScan) {
+  using mozilla::kPreserveNice;
+  using mozilla::PinCpuGroup;
+  using mozilla::ThreadPinRule;
+  // Keep Parent IPC bridges on Medium (4-9) while co-locating Gecko (-2),
+  // AndroidUI (prio 110), and VsyncIOThread (-8) on NonPrime (0-9) so VSync
+  // and Gecko<->AndroidUI wakeups avoid queueing behind heavy 4-9 workers and
+  // free Medium cores for Stylo, TaskController, and WebRender. Never touch
+  // Prime (10-11) where /dev/cpuctl/vip's smt_expeller would evict Content.
+  static constexpr ThreadPinRule kParentRules[] = {
+      {"VsyncIOThread", PinCpuGroup::Medium, -8},
+      {"IPC I/O Parent", PinCpuGroup::Medium, -5},
+      {"IPDL Backgr", PinCpuGroup::Medium, -5},
+      {"Gecko", PinCpuGroup::NonPrime, -2},
+      {"Socket Thread", PinCpuGroup::Medium, -2},
+      {"RenderThread", PinCpuGroup::Medium, kPreserveNice},
+      {"Compositor", PinCpuGroup::Medium, 0},
+      {"gpu-work-", PinCpuGroup::Medium, kPreserveNice},
+      {"gpu-mem-", PinCpuGroup::Medium, kPreserveNice},
+      {"OS_BiShengGPU", PinCpuGroup::Medium, kPreserveNice},
+  };
+  mozilla::PinSelfThreadsOffPrime(
+      aCpusets, kParentRules,
+      sizeof(kParentRules) / sizeof(kParentRules[0]),
+      /* aAllowedPrimeTid = */ 0, aFullScan, /* aNormalizeNiceEquals = */ 0);
+}
+
+static void ScheduleParentAffinityKeeper(
+    uint64_t aGeneration, uint32_t aAttempt,
+    const mozilla::SinglePrimeCpusets& aCpusets);
+
+static void MaintainParentThreadAffinities(
+    uint64_t aGeneration, uint32_t aAttempt,
+    const mozilla::SinglePrimeCpusets& aCpusets) {
+  if (aGeneration != sParentAffinityGeneration ||
+      AppShutdown::IsInOrBeyond(ShutdownPhase::AppShutdownConfirmed)) {
+    return;
+  }
+  const bool geckoDrifted = mozilla::PinThreadIfDrifted(0, aCpusets.mNonPrime);
+  const bool uiDrifted =
+      mozilla::PinThreadIfDrifted(getpid(), aCpusets.mNonPrime);
+  const bool mainDrifted = geckoDrifted || uiDrifted;
+  const bool fullScan = (aAttempt <= 3) || (aAttempt % 5 == 0) || mainDrifted;
+  PinParentThreads(aCpusets, fullScan);
+  ScheduleParentAffinityKeeper(aGeneration, aAttempt + 1, aCpusets);
+}
+
+static void ScheduleParentAffinityKeeper(
+    uint64_t aGeneration, uint32_t aAttempt,
+    const mozilla::SinglePrimeCpusets& aCpusets) {
+  const uint32_t delayMs = (aAttempt < 2) ? 200 : 2000;
+  (void)NS_DelayedDispatchToCurrentThread(
+      NS_NewRunnableFunction("nsAppShell::MaintainCpuAffinity",
+                             [aGeneration, aAttempt, aCpusets]() {
+                               MaintainParentThreadAffinities(
+                                   aGeneration, aAttempt, aCpusets);
+                             }),
+      delayMs);
+}
+
+static void StartParentAffinityKeeper() {
+  if (!XRE_IsParentProcess()) {
+    return;
+  }
+  mozilla::SinglePrimeCpusets cpusets;
+  if (!mozilla::GetSinglePrimeCpusets(&cpusets)) {
+    return;
+  }
+  mozilla::PinThreadIfDrifted(0, cpusets.mNonPrime);
+  mozilla::PinThreadIfDrifted(getpid(), cpusets.mNonPrime);
+  PinParentThreads(cpusets, /* aFullScan = */ true);
+  ScheduleParentAffinityKeeper(++sParentAffinityGeneration, 0, cpusets);
+}
+
+static void StopParentAffinityKeeper() { ++sParentAffinityGeneration; }
 
 class GeckoThreadSupport final
     : public java::GeckoThread::Natives<GeckoThreadSupport> {
@@ -472,11 +553,15 @@ nsresult nsAppShell::Init() {
 
     if (XRE_IsParentProcess()) {
       obsServ->AddObserver(this, "chrome-document-loaded", false);
+      obsServ->AddObserver(this, "application-foreground", false);
+      obsServ->AddObserver(this, "application-background", false);
     } else {
       obsServ->AddObserver(this, "content-document-global-created", false);
       obsServ->AddObserver(this, "geckoview-content-global-transferred", false);
     }
   }
+
+  StartParentAffinityKeeper();
 
   if (sPowerManagerService)
     sPowerManagerService->AddWakeLockListener(sWakeLockListener);
@@ -486,6 +571,7 @@ nsresult nsAppShell::Init() {
 
 NS_IMETHODIMP
 nsAppShell::Exit(void) {
+  StopParentAffinityKeeper();
   {
     // Release any thread waiting for a sync call to finish.
     mozilla::MutexAutoLock shellLock(*sAppShellLock);
@@ -512,6 +598,11 @@ nsAppShell::Observe(nsISupports* aSubject, const char* aTopic,
           java::GeckoThread::State::PROFILE_READY(),
           java::GeckoThread::State::RUNNING());
     }
+    StartParentAffinityKeeper();
+  } else if (!strcmp(aTopic, "application-foreground")) {
+    StartParentAffinityKeeper();
+  } else if (!strcmp(aTopic, "application-background")) {
+    StopParentAffinityKeeper();
   } else if (!strcmp(aTopic, "profile-after-change")) {
     if (jni::IsAvailable()) {
       java::GeckoThread::SetState(java::GeckoThread::State::PROFILE_READY());
@@ -538,6 +629,7 @@ nsAppShell::Observe(nsISupports* aSubject, const char* aTopic,
       window->OnGeckoViewReady();
     }
   } else if (!strcmp(aTopic, "quit-application")) {
+    StopParentAffinityKeeper();
     if (jni::IsAvailable()) {
       const bool restarting = aData && u"restart"_ns.Equals(aData);
       java::GeckoThread::SetState(restarting

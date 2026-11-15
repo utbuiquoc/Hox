@@ -4,6 +4,8 @@
 
 /* FFI functions for Servo to call into Gecko */
 
+#include <cstdio>
+
 #include "mozilla/GeckoBindings.h"
 
 #include "AnchorPositioningUtils.h"
@@ -1689,12 +1691,81 @@ bool Gecko_IsMainThread() { return NS_IsMainThread(); }
 
 bool Gecko_IsDOMWorkerThread() { return !!GetCurrentThreadWorkerPrivate(); }
 
+#ifdef MOZ_WIDGET_ANDROID
+// Count distinct physical cores for a CPU BitSet so SMT sibling threads on a
+// single Prime core (e.g. Kirin 9020A cpu10-11 sharing package 2, core 0) are
+// not mistaken for multiple independent physical Big cores.
+static size_t CountPhysicalCpus(
+    const BitSet<hal::HeterogeneousCpuInfo::MAX_CPUS>& aCpus,
+    size_t aTotalNumCpus) {
+  struct PhysicalCoreId {
+    int mPkg;
+    int mCore;
+  };
+  PhysicalCoreId seen[hal::HeterogeneousCpuInfo::MAX_CPUS];
+  size_t uniqueCount = 0;
+
+  for (size_t i = 0; i < aTotalNumCpus; i++) {
+    if (!aCpus.test(i)) {
+      continue;
+    }
+    char path[96];
+    int pkg = -1;
+    int core = -1;
+    std::snprintf(path, sizeof(path),
+                  "/sys/devices/system/cpu/cpu%zu/topology/physical_package_id",
+                  i);
+    if (FILE* f = std::fopen(path, "r")) {
+      if (std::fscanf(f, "%d", &pkg) != 1) {
+        pkg = -1;
+      }
+      std::fclose(f);
+    }
+    std::snprintf(path, sizeof(path),
+                  "/sys/devices/system/cpu/cpu%zu/topology/core_id", i);
+    if (FILE* f = std::fopen(path, "r")) {
+      if (std::fscanf(f, "%d", &core) != 1) {
+        core = -1;
+      }
+      std::fclose(f);
+    }
+    if (pkg < 0 || core < 0) {
+      return aCpus.Count();
+    }
+    bool duplicate = false;
+    for (size_t j = 0; j < uniqueCount; j++) {
+      if (seen[j].mPkg == pkg && seen[j].mCore == core) {
+        duplicate = true;
+        break;
+      }
+    }
+    if (!duplicate) {
+      seen[uniqueCount++] = {pkg, core};
+    }
+  }
+  return uniqueCount;
+}
+#endif
+
 int32_t Gecko_GetNumStyleThreads() {
   if (const auto& cpuInfo = hal::GetHeterogeneousCpuInfo()) {
     size_t numBigCpus = cpuInfo->mBigCpus.Count();
     // If CPUs are homogeneous we do not need to override stylo's
     // default number of threads.
     if (numBigCpus != cpuInfo->mTotalNumCpus) {
+#ifdef MOZ_WIDGET_ANDROID
+      size_t numPhysicalBig =
+          CountPhysicalCpus(cpuInfo->mBigCpus, cpuInfo->mTotalNumCpus);
+      if (numPhysicalBig >= 2) {
+        return static_cast<int32_t>(numPhysicalBig);
+      }
+      // On single-Prime SMT SoCs (1 physical Prime + 3 physical Medium cores
+      // across 6 SMT threads), match 1 worker per physical Medium core plus the
+      // main thread instead of oversubscribing Medium SMT siblings.
+      size_t numPhysicalMed =
+          CountPhysicalCpus(cpuInfo->mMediumCpus, cpuInfo->mTotalNumCpus);
+      return static_cast<int32_t>(numPhysicalBig + numPhysicalMed);
+#else
       // From testing on a variety of devices it appears using only
       // the number of big cores gives best performance when there are
       // 2 or more big cores. If there are fewer than 2 big cores then
@@ -1703,6 +1774,7 @@ int32_t Gecko_GetNumStyleThreads() {
         return static_cast<int32_t>(numBigCpus);
       }
       return static_cast<int32_t>(numBigCpus + cpuInfo->mMediumCpus.Count());
+#endif
     }
   }
 
